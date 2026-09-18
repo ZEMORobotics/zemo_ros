@@ -35,3 +35,5 @@ candown() {
 
 # ===== ZEMO ROS 2 CONFIG END =====
 EOF
+
+source "$HOME/.bashrc"
