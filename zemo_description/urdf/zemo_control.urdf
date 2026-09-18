@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<robot name="zemo" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:macro name="zemo_control">
+
+    <ros2_control name="CanInterface" type="system">
+        <hardware>
+            <plugin>zemo_hardware::CanInterface</plugin>
+
+            <param name="can.interface">can0</param>
+
+            <param name="diff_drive.kp">1.0</param>
+            <param name="diff_drive.ki">0.0</param>
+            <param name="diff_drive.kd">0.0</param>
+
+            <param name="diff_drive.kp_angular">1.0</param>
+            <param name="diff_drive.ki_angular">0.0</param>
+            <param name="diff_drive.kd_angular">0.0</param>
+
+            <!-- 4 * 2048 -->
+            <param name="diff_drive.enc_tick_per_rev">8192</param>     
+
+        </hardware>
+
+        <!-- Diff Drive -->
+        
+        <joint name="wheel_left_joint">
+            <state_interface name="position" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </state_interface>
+            <state_interface name="velocity" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </state_interface>
+            <command_interface name="velocity" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </command_interface>
+        </joint>
+
+        <joint name="wheel_right_joint">
+            <state_interface name="position" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </state_interface>
+            <state_interface name="velocity" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </state_interface>
+            <command_interface name="velocity" data_type="float32">
+                <param name="initial_value">0.0</param>
+            </command_interface>
+        </joint>
+    </ros2_control>
+
+
+
+    </xacro:macro>
+</robot>

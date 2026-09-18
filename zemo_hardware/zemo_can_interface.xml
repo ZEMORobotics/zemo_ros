@@ -1,0 +1,13 @@
+<library path="can_interface">
+    <class 
+        name="zemo_hardware::CanInterface"
+        type="zemo_hardware::CanInterface" 
+        base_class_type="hardware_interface::SystemInterface">
+
+        <description>
+            ros2_control hardware interface for CAN comunication
+        </description>
+
+    </class>
+
+</library>
