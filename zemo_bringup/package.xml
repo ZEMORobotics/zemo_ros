@@ -3,16 +3,20 @@
 <package format="3">
   <name>zemo_bringup</name>
   <version>0.0.0</version>
-  <description>Implements global launch scripts and bringup helper scripts</description>
-  <maintainer email="vladimirandrisko@gmail.com">zemo</maintainer>
+  <description>
+    This package groups all package launch files into one high level launch.
+    It also includes launch configurations for rviz and simulation.
+  </description>
+  <maintainer email="vladimirandrisko@gmail.com">Vladimir</maintainer>
   <license>Apache-2.0</license>
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>zemo_hardware</depend>
+  <depend>zemo_msgs</depend>
+  <depend>zemo_navigation</depend>  
 
   <export>
-    <build_type>ament_python</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

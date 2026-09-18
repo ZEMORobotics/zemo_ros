@@ -4,7 +4,7 @@
   <name>zemo_hardware</name>
   <version>0.0.0</version>
   <description>Implements ros2 control package for robot hardware</description>
-  <maintainer email="vladimirandrisko@gmail.com">zemo</maintainer>
+  <maintainer email="vladimirandrisko@gmail.com">Vladimir</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

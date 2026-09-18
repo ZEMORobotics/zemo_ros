@@ -6,7 +6,7 @@
   <description>
     This packages takes data from .urdf and creates robot_state_publisher used by nav2 and ros2 control
   </description>
-  <maintainer email="vladimirandrisko@gmail.com">zemo</maintainer>
+  <maintainer email="vladimirandrisko@gmail.com">Vladimir</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

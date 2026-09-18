@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")
-    log_level = "info"  # info or warn or error or debug or fatal
+    log_level = "warn"  # info or warn or error or debug or fatal
     output_screen = "screen" # screen or log or both
 
     controller_config = os.path.join(
