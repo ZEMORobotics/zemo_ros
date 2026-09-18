@@ -24,5 +24,14 @@ temp() {
     sudo watch -n 1 vcgencmd measure_temp
 }
 
+canup() {
+    sudo ip link set can0 up type can bitrate 500000 restart-ms 100 sjw 3
+    sudo ip link set can0 txqueuelen 100
+}
+
+candown() {
+    sudo ip link set can0 down
+}
+
 # ===== ZEMO ROS 2 CONFIG END =====
 EOF
