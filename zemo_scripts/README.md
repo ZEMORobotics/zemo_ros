@@ -69,3 +69,26 @@ dtoverlay=mcp251xfd,spi0-0,interrupt=25,oscillator=20000000
 ```
 
 spi0-0, interrupt and oscillator are depended on hardware configuration of the controller
+
+## UART setup
+
+In the same *config.txt* found in */boot/firmware/config.txt*, modify it so that it contains:
+
+```
+dtoverlay=uart1-pi5
+dtoverlay=uart2-pi5
+```
+
+This maps pins 27, 28, and 7, 29 to UART interface.
+This is as per **andjelko** raspberry shield design
+
+/dev/ttyAMA0 is uart0 (gpio 14, 15)
+/dev/ttyAMA1 is uart1 (gpio 0, 1)
+/dev/ttyAMA2 is uart2 (gpio 4, 5)
+/dev/ttyAMA10 is debug uart, it should not be used.
+
+You can check exact gpios with:
+
+```bash
+sudo cat /sys/kernel/debug/pinctrl/1f000d0000.gpio-pinctrl-rp1/pinmux-pins
+```

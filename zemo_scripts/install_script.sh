@@ -4,6 +4,8 @@
 set -e
 
 ROS_DISTRO="jazzy"
+sudo usermod -a -G dialout $USER
+# Log out and log back in for changes to take effect
 
 # before installing ros2, check for UTF-8 with: locale
 
@@ -19,6 +21,8 @@ sudo dpkg -i /tmp/ros2-apt-source.deb
 
 sudo apt update
 sudo apt upgrade
+
+sudo apt-get install build-essential cmake git
 
 sudo apt -y install \
 	ros-${ROS_DISTRO}-ros-base \
