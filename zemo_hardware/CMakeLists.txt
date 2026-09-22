@@ -13,7 +13,11 @@ find_package(pluginlib REQUIRED)
 find_package(Threads REQUIRED)
 
 set(CAN_INTERFACE can_interface)
+set(SERVO_DRIVER scservo)
+set(SERVO_INTERFACE servo_interface)
 
+
+# ================ CAN SYSTEM ===================
 add_library(${CAN_INTERFACE} SHARED
   src/can_system/can_interface.cpp
   src/can_system/diff_drive.cpp
@@ -42,9 +46,56 @@ pluginlib_export_plugin_description_file(
   zemo_can_interface.xml
 )
 
+# ================ SERVO SYSTEM ===================
+
+add_library(${SERVO_DRIVER} STATIC
+  src/servo_system/waveshare_driver/SCSerial.cpp
+  src/servo_system/waveshare_driver/SCS.cpp
+  src/servo_system/waveshare_driver/SMS_STS.cpp
+  src/servo_system/waveshare_driver/SCSCL.cpp
+  src/servo_system/waveshare_driver/HLSCL.cpp
+)
+
+target_include_directories(${SERVO_DRIVER} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_compile_features(${SERVO_DRIVER} PUBLIC cxx_std_17)
+
+set_target_properties(${SERVO_DRIVER} PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+add_library(${SERVO_INTERFACE} SHARED
+  src/servo_system/servo_interface.cpp
+)
+
+target_include_directories(${SERVO_INTERFACE} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(${SERVO_INTERFACE}
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
+)
+
+target_link_libraries(${SERVO_INTERFACE}
+  ${SERVO_DRIVER}
+)
+
+pluginlib_export_plugin_description_file(
+  hardware_interface
+  zemo_servo_interface.xml
+)
+
+# =================================================
+
 install(
-  TARGETS ${CAN_INTERFACE}
-  EXPORT export_zemo_hardware
+  TARGETS ${CAN_INTERFACE} ${SERVO_INTERFACE}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -58,11 +109,6 @@ install(
 install(
   DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
-)
-
-ament_export_targets(
-  export_zemo_hardware
-  HAS_LIBRARY_TARGET
 )
 
 ament_export_dependencies(

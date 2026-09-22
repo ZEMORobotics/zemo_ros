@@ -1,0 +1,14 @@
+<library path="can_interface">
+    <class 
+        name="zemo_hardware::ServoInterface"
+        type="zemo_hardware::ServoInterface" 
+        base_class_type="hardware_interface::SystemInterface">
+
+        <description>
+            ros2_control hardware interface for Servo comunication, this interface bring abstraction to waveshare and
+            dynamixel servo motors, it should support all available protocols from said motors.
+        </description>
+
+    </class>
+
+</library>
