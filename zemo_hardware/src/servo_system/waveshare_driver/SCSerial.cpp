@@ -71,7 +71,7 @@ SCSerial::SCSerial(u8 End, u8 Level): SCS(End, Level){
 }
 
 
-bool SCSerial::begin(int baudRate, const char *serialPort){
+bool SCSerial::begin(int baudRate, const char *serialPort, unsigned int txEnableGpio, unsigned int rxEnableGpio){
     if(serialPort == nullptr) return false;
 
     if(fd != -1) end();
@@ -146,9 +146,42 @@ bool SCSerial::begin(int baudRate, const char *serialPort){
     }
 
     txBufLen = 0;
+
+	gpio_chip_ = gpiod_chip_open_by_name("gpiochip0");
+	if(!gpio_chip_){
+		end();
+		return false;
+	}
+
+	tx_enable_ = gpiod_chip_get_line(gpio_chip_, txEnableGpio);
+	rx_enable_ = gpiod_chip_get_line(gpio_chip_, rxEnableGpio);
+
+	if(!tx_enable_ || !rx_enable_){
+		end();
+		return false;
+	}
+
+	if(gpiod_line_request_output(tx_enable_, "scservo_tx_enable", 0) < 0){
+		end();
+		return false;
+	}
+
+	if(gpiod_line_request_output(rx_enable_, "scservo_rx_enable", 1) < 0){
+		end();
+		return false;
+	}
     return true;
 }
 
+void SCSerial::setTxMode(){
+	gpiod_line_set_value(rx_enable_, 0);
+	gpiod_line_set_value(tx_enable_, 1);
+}
+
+void SCSerial::setRxMode(){
+	gpiod_line_set_value(tx_enable_, 0);
+	gpiod_line_set_value(rx_enable_, 1);
+}
 
 int SCSerial::setBaudRate(int baudRate){
     if (fd == -1)
@@ -190,6 +223,7 @@ int SCSerial::readSCS(unsigned char *nDat, int nLen){
     if (nLen == 0) return 0;
 
     int rvLen = 0;
+	setRxMode();
 
     while(rvLen < nLen){
         fd_set read_set;
@@ -258,8 +292,9 @@ void SCSerial::rFlushSCS(){
 
 void SCSerial::wFlushSCS(){
     if(fd == -1) return;
+	if(txBufLen <= 0) return;
 
-    if(txBufLen <= 0) return;
+    setTxMode();
 
     int total_written = 0;
 
@@ -295,8 +330,16 @@ void SCSerial::wFlushSCS(){
 
         if(errno == EINTR) continue;
 
-        txBufLen = 0;
+		while(tcdrain(fd) != 0){
+			if(errno == EINTR) continue;
 
+			setRxMode();
+			txBufLen = 0;
+			return;
+		}
+
+		setRxMode();
+        txBufLen = 0;
         return;
     }
 
@@ -312,12 +355,31 @@ void SCSerial::wFlushSCS(){
         if (errno == EINTR) continue;
         break;
     }
+	setRxMode();
 
     txBufLen = 0;
 }
 
 
 void SCSerial::end() noexcept{
+
+	if(tx_enable_){
+        gpiod_line_set_value(tx_enable_, 0);
+        gpiod_line_release(tx_enable_);
+        tx_enable_ = nullptr;
+    }
+
+    if(rx_enable_){
+        gpiod_line_set_value(rx_enable_, 0);
+        gpiod_line_release(rx_enable_);
+        rx_enable_ = nullptr;
+    }
+
+    if(gpio_chip_){
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+    }
+
     if(fd == -1) return;
 
     close(fd);

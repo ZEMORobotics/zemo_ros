@@ -46,6 +46,7 @@
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
+#include <gpiod.h>
 
 class SCSerial : public SCS
 {
@@ -71,7 +72,7 @@ class SCSerial : public SCS
   public:
 	virtual int getErr() { return Err; }
 	virtual int setBaudRate(int baudRate);
-	virtual bool begin(int baudRate, const char* serialPort);
+	virtual bool begin(int baudRate, const char* serialPort, unsigned int txEnableGpio, unsigned int rxEnableGpio);
 	virtual void end() noexcept;
 
   protected:
@@ -80,6 +81,15 @@ class SCSerial : public SCS
 	struct termios curopt; // fd cur opt
 	unsigned char txBuf[SCSERVO_BUFFER_SIZE];
 	int txBufLen;
+
+  private:
+	gpiod_chip *gpio_chip_ = nullptr;
+	gpiod_line *tx_enable_ = nullptr;
+	gpiod_line *rx_enable_ = nullptr;
+
+	void setTxMode();
+	void setRxMode();
+	
 };
 
 #endif

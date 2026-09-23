@@ -11,6 +11,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(Threads REQUIRED)
+find_package(PkgConfig REQUIRED)
 
 set(CAN_INTERFACE can_interface)
 set(SERVO_DRIVER scservo)
@@ -59,6 +60,11 @@ add_library(${SERVO_DRIVER} STATIC
 target_include_directories(${SERVO_DRIVER} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
+  ${GPIOD_INCLUDE_DIRS}
+)
+
+target_link_libraries(${SERVO_DRIVER}
+  ${GPIOD_LIBRARIES}
 )
 
 target_compile_features(${SERVO_DRIVER} PUBLIC cxx_std_17)

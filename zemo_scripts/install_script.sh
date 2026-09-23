@@ -34,5 +34,7 @@ sudo apt -y install \
 	ros-${ROS_DISTRO}-rplidar-ros
 	can-utils \
 	python3-pip \
-	htop
+	htop \
+	libgpiod-dev \
+	gpiod
 
