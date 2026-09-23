@@ -1,299 +1,326 @@
-/**
- * @file SCSerial.cpp
- * @brief Feetech serial servo hardware interface layer implementation
- *
- * @details This file implements POSIX serial port communication for Feetech
- * servo motors on Linux platforms. It provides the hardware abstraction layer
- * between the protocol layer (SCS) and the actual serial port device.
- *
- * **Key Responsibilities:**
- * - Serial port initialization and configuration (termios)
- * - Baud rate configuration (38400 to 1M baud)
- * - Raw data transmission and reception
- * - Timeout handling using select()
- * - Buffer flushing and flow control
- * - Resource cleanup (file descriptor management)
- *
- * **Platform Support:**
- * - Linux (POSIX termios API)
- * - Supports USB-to-serial adapters (/dev/ttyUSB*, /dev/ttyACM*)
- *
- * @note Uses POSIX termios for serial port control
- * @see SCSerial.h for class interface documentation
- */
-
 #include "zemo_hardware/servo_system/waveshare_driver/SCSerial.h"
 
-#ifdef __APPLE__
-#include <IOKit/serial/ioss.h> // IOSSIOSPEED for non-standard baud rates on macOS
-#include <sys/ioctl.h>
-#endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 
-/**
- * @brief Default constructor
- *
- * Initializes serial port with:
- * - IOTimeOut = 100ms
- * - fd = -1 (not open)
- * - txBufLen = 0 (empty buffer)
- */
-SCSerial::SCSerial()
-{
-	IOTimeOut = 100;
-	fd = -1;
-	txBufLen = 0;
+#include <fcntl.h>
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
+
+
+bool baud_to_speed(int baud_rate, speed_t &speed){
+    switch (baud_rate) {
+        case 9600:
+            speed = B9600;
+            return true;
+        case 19200:
+            speed = B19200;
+            return true;
+        case 38400:
+            speed = B38400;
+            return true;
+        case 57600:
+            speed = B57600;
+            return true;
+        case 115200:
+            speed = B115200;
+            return true;
+        case 500000:
+            speed = B500000;
+            return true;
+        case 1000000:
+            speed = B1000000;
+            return true;
+
+        default:
+            return false;
+    }
 }
 
-/**
- * @brief Constructor with endianness parameter
- *
- * @param End Endianness flag (0=little-endian, 1=big-endian)
- */
-SCSerial::SCSerial(u8 End) : SCS(End)
-{
-	IOTimeOut = 100;
-	fd = -1;
-	txBufLen = 0;
+timeval make_timeout(int timeout_ms){
+    if(timeout_ms < 0)
+        timeout_ms = 0;
+
+    timeval timeout{};
+
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+    return timeout;
 }
 
-/**
- * @brief Constructor with endianness and response level
- *
- * @param End Endianness flag
- * @param Level Response level
- */
-SCSerial::SCSerial(u8 End, u8 Level) : SCS(End, Level)
-{
-	IOTimeOut = 100;
-	fd = -1;
-	txBufLen = 0;
+
+SCSerial::SCSerial(){
+    IOTimeOut = 100;
+    fd = -1;
+    txBufLen = 0;
 }
 
-/**
- * @brief Initialize and open serial port
- *
- * Opens serial port with specified baud rate and configures it for
- * 8N1 (8 data bits, no parity, 1 stop bit) communication in raw mode.
- *
- * @param baudRate Baud rate (e.g., 1000000 for 1Mbps)
- * @param serialPort Device path (e.g., "/dev/ttyUSB0")
- * @return true on success, false on failure
- */
-bool SCSerial::begin(int baudRate, const char* serialPort)
-{
-	if (fd != -1) {
-		close(fd);
-		fd = -1;
-	}
-	// printf("servo port:%s\n", serialPort);
-	if (serialPort == NULL)
-		return false;
-	fd = open(serialPort, O_RDWR | O_NOCTTY | O_NONBLOCK);
-	if (fd == -1) {
-		perror("open:");
-		return false;
-	}
-	tcgetattr(fd, &orgopt);
-	tcgetattr(fd, &curopt);
-	speed_t CR_BAUDRATE;
-#ifdef __APPLE__
-	bool use_iossiospeed = false;
-#endif
-	switch (baudRate) {
-	case 9600:
-		CR_BAUDRATE = B9600;
-		break;
-	case 19200:
-		CR_BAUDRATE = B19200;
-		break;
-	case 38400:
-		CR_BAUDRATE = B38400;
-		break;
-	case 57600:
-		CR_BAUDRATE = B57600;
-		break;
-	case 115200:
-		CR_BAUDRATE = B115200;
-		break;
-	case 500000:
-#ifdef __APPLE__
-		CR_BAUDRATE = B9600; // placeholder; overridden by IOSSIOSPEED below
-		use_iossiospeed = true;
-#else
-		CR_BAUDRATE = B500000;
-#endif
-		break;
-	case 1000000:
-#ifdef __APPLE__
-		CR_BAUDRATE = B9600; // placeholder; overridden by IOSSIOSPEED below
-		use_iossiospeed = true;
-#else
-		CR_BAUDRATE = B1000000;
-#endif
-		break;
-	default:
-		CR_BAUDRATE = B115200;
-		break;
-	}
-	cfsetispeed(&curopt, CR_BAUDRATE);
-	cfsetospeed(&curopt, CR_BAUDRATE);
-
-	printf("serial speed %d\n", baudRate);
-	// Mostly 8N1
-	curopt.c_cflag &= ~PARENB;
-	curopt.c_cflag &= ~CSTOPB;
-	curopt.c_cflag &= ~CSIZE;
-	curopt.c_cflag |= CS8;
-	curopt.c_cflag |= CREAD;
-	curopt.c_cflag |= CLOCAL; // disable modem statuc check
-	cfmakeraw(&curopt);       // make raw mode
-	curopt.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-	if (tcsetattr(fd, TCSANOW, &curopt) != 0) {
-		perror("tcsetattr:");
-		return false;
-	}
-#ifdef __APPLE__
-	if (use_iossiospeed) {
-		speed_t speed = (speed_t) baudRate;
-		if (ioctl(fd, IOSSIOSPEED, &speed) == -1) {
-			perror("IOSSIOSPEED:");
-			return false;
-		}
-	}
-#endif
-	return true;
+SCSerial::SCSerial(u8 End) : SCS(End){
+    IOTimeOut = 100;
+    fd = -1;
+    txBufLen = 0;
 }
 
-/**
- * @brief Change serial port baud rate
- *
- * @param baudRate New baud rate
- * @return 1 on success, -1 if port not open
- */
-int SCSerial::setBaudRate(int baudRate)
-{
-	if (fd == -1) {
-		return -1;
-	}
-	tcgetattr(fd, &orgopt);
-	tcgetattr(fd, &curopt);
-	speed_t CR_BAUDRATE = baudRate;
-	cfsetispeed(&curopt, CR_BAUDRATE);
-	cfsetospeed(&curopt, CR_BAUDRATE);
-	return 1;
+SCSerial::SCSerial(u8 End, u8 Level): SCS(End, Level){
+    IOTimeOut = 100;
+    fd = -1;
+    txBufLen = 0;
 }
 
-int SCSerial::readSCS(unsigned char* nDat, int nLen)
-{
-	int fs_sel;
-	fd_set fs_read;
-	int rvLen = 0;
 
-	// Use select() to implement multi-channel serial communication
-	while (1) {
-		// Reinitialize timeout for each select() call
-		// select() modifies the timeout structure on Linux
-		struct timeval time;
-		time.tv_sec = 0;
-		time.tv_usec = IOTimeOut * 1000;
+bool SCSerial::begin(int baudRate, const char *serialPort){
+    if(serialPort == nullptr) return false;
 
-		FD_ZERO(&fs_read);
-		FD_SET(fd, &fs_read);
+    if(fd != -1) end();
 
-		fs_sel = select(fd + 1, &fs_read, NULL, NULL, &time);
-		if (fs_sel) {
-			rvLen += read(fd, nDat + rvLen, nLen - rvLen);
-			// printf("nLen = %d rvLen = %d\n", nLen, rvLen);
-			if (rvLen < nLen) {
-				continue;
-			} else {
-				return rvLen;
-			}
-		} else {
-			// printf("serial read fd read return 0\n");
-			return rvLen;
-		}
-	}
+    speed_t baud;
+    if(!baud_to_speed(baudRate, baud)) return false;
+
+    fd = open(serialPort, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
+
+    if(fd == -1) return false;
+
+    if(tcgetattr(fd, &orgopt) != 0){
+        close(fd);
+        fd = -1;
+        return false;
+    }
+
+    curopt = orgopt;
+
+    /*
+     * Raw binary mode first.
+     */
+    cfmakeraw(&curopt);
+
+    
+    /*
+     * 8 data bits
+     * no parity
+     * 1 stop bit
+     * receiver enabled
+     * ignore modem-control lines
+     */
+    curopt.c_cflag &= ~PARENB;
+    curopt.c_cflag &= ~CSTOPB;
+    curopt.c_cflag &= ~CSIZE;
+    curopt.c_cflag &= ~CRTSCTS;
+
+    curopt.c_cflag |= CS8;
+    curopt.c_cflag |= CREAD;
+    curopt.c_cflag |= CLOCAL;
+
+    curopt.c_iflag &= ~(IXON | IXOFF | IXANY);
+    curopt.c_cc[VMIN] = 0;
+    curopt.c_cc[VTIME] = 0;
+
+    if(cfsetispeed(&curopt, baud) != 0){
+        close(fd);
+        fd = -1;
+        return false;
+    }
+
+    if(cfsetospeed(&curopt, baud) != 0){
+        close(fd);
+        fd = -1;
+        return false;
+    }
+
+    if(tcsetattr(fd, TCSANOW, &curopt) != 0){
+        close(fd);
+        fd = -1;
+        return false;
+    }
+
+    /*
+     * Throw away stale data that might have been left
+     * in the UART buffers before opening/configuring it.
+     */
+    if(tcflush(fd, TCIOFLUSH) != 0){
+        close(fd);
+        fd = -1;
+        return false;
+    }
+
+    txBufLen = 0;
+    return true;
 }
 
-/**
- * @brief Write data buffer to transmit buffer
- *
- * Copies data to internal transmit buffer. Data is sent when wFlushSCS() is called.
- * Includes NULL pointer and buffer overflow protection.
- *
- * @param nDat Pointer to data to write
- * @param nLen Number of bytes to write
- * @return Current buffer length on success, -1 on error
- */
-int SCSerial::writeSCS(unsigned char* nDat, int nLen)
-{
-	// NULL pointer check
-	if (!nDat) {
-		return -1;
-	}
 
-	// Buffer overflow protection
-	if (txBufLen + nLen > SCSERVO_BUFFER_SIZE) {
-		return -1;
-	}
-	while (nLen--) {
-		txBuf[txBufLen++] = *nDat++;
-	}
-	return txBufLen;
+int SCSerial::setBaudRate(int baudRate){
+    if (fd == -1)
+        return -1;
+
+    speed_t baud;
+    if (!baud_to_speed(baudRate, baud))
+        return -1;
+
+    termios options{};
+
+    if(tcgetattr(fd, &options) != 0) return -1;
+    
+
+    /*
+     * Do not change baud rate while bytes are still
+     * physically being transmitted.
+     */
+    while (tcdrain(fd) != 0) {
+        if(errno == EINTR)
+            continue;
+        return -1;
+    }
+
+    if(cfsetispeed(&options, baud) != 0) return -1;
+    if(cfsetospeed(&options, baud) != 0) return -1;
+    if(tcsetattr(fd, TCSANOW, &options) != 0) return -1;
+
+    curopt = options;
+
+    return 1;
 }
 
-/**
- * @brief Write single byte to transmit buffer
- *
- * @param bDat Byte to write
- * @return Current buffer length on success, -1 if buffer full
- */
-int SCSerial::writeSCS(unsigned char bDat)
-{
-	// Buffer overflow protection
-	if (txBufLen >= SCSERVO_BUFFER_SIZE) {
-		return -1;
-	}
-	txBuf[txBufLen++] = bDat;
-	return txBufLen;
+
+int SCSerial::readSCS(unsigned char *nDat, int nLen){
+    if (fd == -1) return -1;
+    if (nDat == nullptr) return -1;
+    if (nLen < 0) return -1;
+    if (nLen == 0) return 0;
+
+    int rvLen = 0;
+
+    while(rvLen < nLen){
+        fd_set read_set;
+
+        FD_ZERO(&read_set);
+        FD_SET(fd, &read_set);
+
+        timeval timeout = make_timeout(IOTimeOut);
+
+        const int result = select(fd + 1, &read_set, nullptr, nullptr, &timeout);
+
+        if(result > 0){
+            const ssize_t n = read(fd, nDat + rvLen, static_cast<size_t>(nLen - rvLen));
+
+            if(n > 0){
+                rvLen += static_cast<int>(n);
+                continue;
+            }
+
+            if (n == 0) return rvLen;
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+
+            return -1;
+        }
+
+        //Timeout.
+        if(result == 0) return rvLen;
+
+        //select() interrupted by a signal.
+        if(errno == EINTR) continue;
+
+        return -1;
+    }
+
+    return rvLen;
 }
 
-/**
- * @brief Flush receive buffer
- *
- * Discards any unread data in the serial port receive buffer.
- */
-void SCSerial::rFlushSCS()
-{
-	tcflush(fd, TCIFLUSH);
+
+int SCSerial::writeSCS(unsigned char *nDat, int nLen){
+    if(nDat == nullptr) return -1;
+    if(nLen < 0) return -1;
+    if(nLen == 0) return txBufLen;
+    if(nLen > SCSERVO_BUFFER_SIZE - txBufLen) return -1;
+
+    std::memcpy(txBuf + txBufLen, nDat, static_cast<size_t>(nLen));
+
+    txBufLen += nLen;
+    return txBufLen;
 }
 
-/**
- * @brief Flush transmit buffer
- *
- * Sends all buffered data from txBuf to the serial port.
- */
-void SCSerial::wFlushSCS()
-{
-	if (txBufLen) {
-		ssize_t written = write(fd, txBuf, txBufLen);
-		// Note: write errors are not critical for this protocol, servo will timeout
-		// In production code, consider checking: if(written < 0) { handle error }
-		(void) written; // Suppress unused variable warning
-		txBufLen = 0;
-	}
+
+int SCSerial::writeSCS(unsigned char bDat){
+    if(txBufLen >= SCSERVO_BUFFER_SIZE) return -1;
+
+    txBuf[txBufLen++] = bDat;
+    return txBufLen;
 }
 
-/**
- * @brief Close serial port and cleanup
- *
- * Closes the serial port file descriptor if open.
- */
-void SCSerial::end() noexcept
-{
-	if (fd != -1) {
-		close(fd);
-		fd = -1;
-	}
+
+void SCSerial::rFlushSCS(){
+    if(fd == -1) return;
+    tcflush(fd, TCIFLUSH);
+}
+
+
+void SCSerial::wFlushSCS(){
+    if(fd == -1) return;
+
+    if(txBufLen <= 0) return;
+
+    int total_written = 0;
+
+    while(total_written < txBufLen){
+        fd_set write_set;
+
+        FD_ZERO(&write_set);
+        FD_SET(fd, &write_set);
+
+        timeval timeout = make_timeout(IOTimeOut);
+        const int result = select(fd + 1, nullptr, &write_set, nullptr, &timeout);
+
+        if(result > 0){
+            const ssize_t n = write(fd, txBuf + total_written, static_cast<size_t>(txBufLen - total_written));
+
+            if(n > 0){
+                total_written += static_cast<int>(n);
+                continue;
+            }
+
+            if(n == 0) continue;
+            if(errno == EINTR) continue;
+            if(errno == EAGAIN || errno == EWOULDBLOCK) continue;
+
+            txBufLen = 0;
+            return;
+        }
+
+        if(result == 0){
+            txBufLen = 0;
+            return;
+        }
+
+        if(errno == EINTR) continue;
+
+        txBufLen = 0;
+
+        return;
+    }
+
+    /*
+     * write() only guarantees that the kernel accepted
+     * the bytes. tcdrain() waits until the UART has
+     * physically transmitted them.
+     *
+     * This will be especially important once TX_ENABLE /
+     * RX_ENABLE GPIO handling is added.
+     */
+    while (tcdrain(fd) != 0) {
+        if (errno == EINTR) continue;
+        break;
+    }
+
+    txBufLen = 0;
+}
+
+
+void SCSerial::end() noexcept{
+    if(fd == -1) return;
+
+    close(fd);
+    fd = -1;
+    txBufLen = 0;
 }

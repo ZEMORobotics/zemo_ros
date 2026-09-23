@@ -154,7 +154,7 @@ void CanInterface::can_rx_loop(){
                 break;
 
             default:
-                //kurcina
+                //velika kurcina 
                 break;
         }
 
