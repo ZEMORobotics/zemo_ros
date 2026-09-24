@@ -1,0 +1,24 @@
+uint8 REVERSING = 4
+uint8 MODE_MOVE_TO_GOAL = 2
+uint8 MODE_ROTATE_AT_GOAL = 1
+
+std_msgs/Header header
+string odom_frame
+
+geometry_msgs/Pose2D target
+
+zemo_msgs/MoveProperties angular_properties
+zemo_msgs/MoveProperties linear_properties
+
+bool ignore_obstacle
+bool enalble_sensor
+builtin_interfaces/Duration timeout
+uint8 mode
+
+---
+
+uint8 error
+
+---
+
+zemo_msgs/MoveState state_info

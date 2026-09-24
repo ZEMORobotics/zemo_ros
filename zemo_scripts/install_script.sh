@@ -31,7 +31,10 @@ sudo apt -y install \
 	ros-${ROS_DISTRO}-xacro \
 	ros-${ROS_DISTRO}-ros2-control \
 	ros-${ROS_DISTRO}-ros2-controllers \
-	ros-${ROS_DISTRO}-rplidar-ros
+	ros-${ROS_DISTRO}-rplidar-ros \
+	ros-${ROS_DISTRO}-navigation2 \
+	ros-${ROS_DISTRO}-nav2-bringup \
+	ros-${ROS_DISTRO}-ruckig \
 	can-utils \
 	python3-pip \
 	htop \

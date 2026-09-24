@@ -1,0 +1,3 @@
+float64 max_valocity
+float64 max_acceleration
+float64 tolerance
