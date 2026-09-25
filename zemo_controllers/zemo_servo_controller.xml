@@ -1,0 +1,7 @@
+<library path="imeklase">
+  <class name="zemo_controllers/nesto" type="zemo_controllers::nesto" base_class_type="controller_interface::ControllerInterface">
+  <description>
+    Controls servo motors with position mode and consant speed mode, with limited velocity and acceleration.
+  </description>
+  </class>
+</library>

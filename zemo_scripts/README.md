@@ -83,8 +83,8 @@ This maps pins 27, 28, and 7, 29 to UART interface.
 
 This is as per **andjelko** raspberry shield design
 
-- /dev/ttyAMA0 is uart0 (gpio 14, 15)
-- /dev/ttyAMA1 is uart1 (gpio 0, 1)
+- /dev/ttyAMA0 is uart0 (gpio 14, 15) (TX_EN: 23, RX_EN: 24) WVS uart on shield schematic
+- /dev/ttyAMA1 is uart1 (gpio 0, 1) (TX_EN: 6, RX_EN: 7) Dynamixel uart on shield schematic
 - /dev/ttyAMA2 is uart2 (gpio 4, 5)
 - /dev/ttyAMA10 is debug uart, it should not be used.
 

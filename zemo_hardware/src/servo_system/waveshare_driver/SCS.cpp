@@ -288,13 +288,11 @@ int SCS::Read(u8 ID, u8 MemAddr, u8* nData, u8 nLen)
 	u8 i;
 	u8 calSum = 0;
 	int Size = readSCS(bBuf, nLen + 6);
-	// printf("nLen+6 = %d, Size = %d\n", nLen+6, Size);
+
 	if (Size != (nLen + 6)) {
 		return 0;
 	}
-	// for(i=0; i<Size; i++){
-	// printf("%x\n", bBuf[i]);
-	//}
+	
 	if (bBuf[0] != 0xff || bBuf[1] != 0xff) {
 		return 0;
 	}

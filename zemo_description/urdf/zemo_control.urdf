@@ -48,7 +48,37 @@
         </joint>
     </ros2_control>
 
+    <ros2_control name="ServoInterface_uart0" type="system">
+        <hardware>
+            <plugin>zemo_hardware::ServoInterface</plugin>
 
+            <param name="port">/dev/ttyAMA0</param>
+            <param name="baudrate">115200</param>
+            <param name="protocol_type">sms_sts</param> <!-- Waveshare ST3215 protocol -->
+            <param name="tx_en_pin">14</param>
+            <param name="rx_en_pin">15</param>
+        </hardware>
+
+        <joint name="m1">
+            <param name="id">1</param>
+            <param name="mode">0</param>
+            <command_interface name="position"/>
+            <command_interface name="velocity"/>
+            <command_interface name="acceleration"/>
+
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+    </ros2_control>
+
+    <!-- <ros2_control name="ServoInterface_uart1" type="system">
+        <hardware>
+            <plugin>zemo_hardware::ServoInterface</plugin>
+        </hardware>
+
+
+    </ros2_control> -->
 
     </xacro:macro>
 </robot>

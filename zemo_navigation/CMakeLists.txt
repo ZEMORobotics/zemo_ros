@@ -19,10 +19,12 @@ find_package(zemo_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
 add_library(move SHARED src/move.cpp)
+
 target_include_directories(move PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
+
 ament_target_dependencies(
   move
   rclcpp
@@ -33,11 +35,13 @@ ament_target_dependencies(
   zemo_msgs
 )
 target_link_libraries(move ruckig::ruckig)
+
 rclcpp_components_register_node(
   move
   PLUGIN "zemo_navigation::MoveActionServer"
   EXECUTABLE move_server
 )
+
 install(
   TARGETS move
   ARCHIVE DESTINATION lib
