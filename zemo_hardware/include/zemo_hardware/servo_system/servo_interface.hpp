@@ -10,9 +10,23 @@
 
 #include <string>
 #include <vector>
+#include <variant> // fancy c++ union
+#include <unordered_map>
 
 namespace zemo_hardware{
 
+enum class ProtocolType{
+    SMS_STS, HLSCL, SCS0009, SCSCL
+};
+
+// this allows for typos when writing urdf
+static std::unordered_map<std::string, ProtocolType> allowed_protocols{
+    {"sms_sts", ProtocolType::SMS_STS}, {"sts_sms", ProtocolType::SMS_STS},
+    {"alibabaisedampatuljaka", ProtocolType::SMS_STS}, {"sms", ProtocolType::SMS_STS},
+    {"sts", ProtocolType::SMS_STS}, {"st3215", ProtocolType::SMS_STS}
+};
+
+using ServoDriver = std::variant<std::monostate, SMS_STS, HLSCL, SCS0009, SCSCL>;
 enum ControlMode : uint8_t {POSITION=0, VELOCITY=1};
 
 struct JointValue{
@@ -45,10 +59,11 @@ public:
     hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
     hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 private:
-    SMS_STS driver_{};
+    ServoDriver driver_;
 
     std::string port_{"/dev/ttyAMA0"};
     std::string protocol_type_{"sms_sts"};
+    ProtocolType protocol_;
     uint8_t tx_enable_pin_{15};
     uint8_t rx_enable_pin_{15};
     uint32_t baudrate_{115200};
