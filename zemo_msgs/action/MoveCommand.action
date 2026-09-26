@@ -1,9 +1,8 @@
-uint8 REVERSING = 4
+uint8 REVERSE_MODE = 4
 uint8 MODE_MOVE_TO_GOAL = 2
 uint8 MODE_ROTATE_AT_GOAL = 1
 
 std_msgs/Header header
-string odom_frame
 
 geometry_msgs/Pose2D target
 
