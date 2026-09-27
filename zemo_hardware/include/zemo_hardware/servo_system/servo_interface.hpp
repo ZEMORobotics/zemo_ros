@@ -19,14 +19,18 @@ enum class ProtocolType{
     SMS_STS, HLSCL, SCS0009, SCSCL
 };
 
-// this allows for typos when writing urdf
+// This allows for typos when writing protocol type in urdf
 static std::unordered_map<std::string, ProtocolType> allowed_protocols{
     {"sms_sts", ProtocolType::SMS_STS}, {"sts_sms", ProtocolType::SMS_STS},
     {"alibabaisedampatuljaka", ProtocolType::SMS_STS}, {"sms", ProtocolType::SMS_STS},
     {"sts", ProtocolType::SMS_STS}, {"st3215", ProtocolType::SMS_STS}
 };
 
-using ServoDriver = std::variant<std::monostate, SMS_STS, HLSCL, SCS0009, SCSCL>;
+// Fancy c++ union. This means that before runtime we don't know the protocol, therefore don't know
+// the type being used by the servo driver. So we apply a pattern with union that will allow us
+// to assign the type of driver_ in runtime.
+// Strongly recommend to read docs on std::variant.
+using ServoDriver = std::variant<SMS_STS, HLSCL, SCS0009, SCSCL>;
 enum ControlMode : uint8_t {POSITION=0, VELOCITY=1};
 
 struct JointValue{
@@ -59,13 +63,15 @@ public:
     hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
     hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 private:
+    static constexpr const char* LOGGER = "zemo_hardware_servo";
+
     ServoDriver driver_;
 
     std::string port_{"/dev/ttyAMA0"};
     std::string protocol_type_{"sms_sts"};
     ProtocolType protocol_;
-    uint8_t tx_enable_pin_{15};
-    uint8_t rx_enable_pin_{15};
+    uint8_t tx_enable_pin_{23};
+    uint8_t rx_enable_pin_{24};
     uint32_t baudrate_{115200};
 
     std::vector<Joint> joint_list_;

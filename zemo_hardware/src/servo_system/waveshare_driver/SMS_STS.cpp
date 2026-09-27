@@ -177,30 +177,25 @@ int SMS_STS::Mode(u8 ID, u8 mode)
  */
 int SMS_STS::InitMotor(u8 ID, u8 mode, u8 enableTorque)
 {
-	// Unlock EEPROM to allow writing to Operating_Mode register (address 33, stored in EEPROM)
-	int ret = unLockEeprom(ID);
-	if (ret == 0) {
+	Err = 0;
+
+	// Unlock EEPROM for mode change.
+	if(unLockEeprom(ID) == 0){
 		Err = 1;
 		return 0;
 	}
 
-	// Set operating mode
-	ret = Mode(ID, mode);
-	if (ret == 0) {
+	int mode_ret = Mode(ID, mode);
+
+	// We have to try to lock the eeprom either way.
+	int lock_ret = LockEeprom(ID);
+
+	if(mode_ret == 0 || lock_ret == 0){
 		Err = 1;
 		return 0;
 	}
 
-	// Lock EEPROM to save the Operating_Mode setting
-	ret = LockEeprom(ID);
-	if (ret == 0) {
-		Err = 1;
-		return 0;
-	}
-
-	// Enable or disable torque as requested
-	ret = EnableTorque(ID, enableTorque);
-	if (ret == 0) {
+	if(EnableTorque(ID, enableTorque) == 0){
 		Err = 1;
 		return 0;
 	}

@@ -93,3 +93,13 @@ You can check exact gpios with:
 ```bash
 sudo cat /sys/kernel/debug/pinctrl/1f000d0000.gpio-pinctrl-rp1/pinmux-pins
 ```
+
+# DDS setup
+
+For DDS setup two functions are given:
+
+- local_dds : Configure DDS so that it is only on the host machine, this lowers Wi-Fi traffic and improves SIMA communication.
+
+- subnet_dds : This is the default confg. This function configures DDS to LAN so that other devices can see ros2 topics. Used for debbuging.
+
+

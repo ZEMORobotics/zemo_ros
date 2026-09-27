@@ -33,6 +33,23 @@ candown() {
     sudo ip link set can0 down
 }
 
+DDS_ENV_FILE="$HOME/.ros_dds_env"
+
+if [ -f "$DDS_ENV_FILE" ]; then
+    source "$DDS_ENV_FILE"
+fi
+
+local_dds() {
+    echo 'export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST' > "$DDS_ENV_FILE"
+    export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+}
+
+subnet_dds() {
+    echo 'export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET' > "$DDS_ENV_FILE"
+    export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+}
+
+
 # ===== ZEMO ROS 2 CONFIG END =====
 EOF
 
