@@ -55,6 +55,7 @@ add_library(${SERVO_DRIVER} STATIC
   src/servo_system/waveshare_driver/SMS_STS.cpp
   src/servo_system/waveshare_driver/SCSCL.cpp
   src/servo_system/waveshare_driver/HLSCL.cpp
+  src/servo_system/waveshare_driver/SCS0009.cpp
 )
 
 target_include_directories(${SERVO_DRIVER} PUBLIC
