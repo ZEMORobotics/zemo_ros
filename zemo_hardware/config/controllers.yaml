@@ -8,6 +8,28 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    servo_controller:
+      type: zemo_controllers/ServoController
+
+
+
+servo_controller:
+  ros__parameters:
+    update_rate: 25
+
+    position_joints: []
+    velocity_joints: []
+
+    min_voltage: 7.0          # ST3215 docs: 6.0 [V]
+    max_voltage: 13.0         # ST3215 docs: 12.6 [V]
+    max_temperature: 60.0     # ST3215 docs: /
+    max_current: 2000.0       # ST3215 docs: 1500 [mA]
+  
+    default_timeout: 2.0  
+    default_tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
+
+
+
 diff_drive_controller:
   ros__parameters:
     left_wheel_names: ["wheel_left_joint"]
