@@ -2,3 +2,4 @@ float64 max_velocity
 float64 max_acceleration
 float64 max_jerk
 float64 tolerance
+float64 stopping_coeff

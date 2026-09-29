@@ -13,7 +13,6 @@ find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MoveProperties.msg"
-  "msg/MoveState.msg"
   "msg/MoveDebug.msg"
   "action/MoveCommand.action"
   DEPENDENCIES geometry_msgs

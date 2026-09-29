@@ -20,4 +20,4 @@ uint8 error
 
 ---
 
-zemo_msgs/MoveState state_info
+uint8 error

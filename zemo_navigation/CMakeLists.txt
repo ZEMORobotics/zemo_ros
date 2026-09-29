@@ -10,13 +10,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(ruckig REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
-find_package(nav2_util REQUIRED)
-find_package(pluginlib REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(zemo_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(ruckig REQUIRED)
 
 add_library(move SHARED src/move.cpp)
 
@@ -31,8 +28,8 @@ ament_target_dependencies(
   rclcpp_action
   rclcpp_components
   nav2_costmap_2d
-  nav2_util
   zemo_msgs
+  std_msgs
 )
 target_link_libraries(move ruckig::ruckig)
 
