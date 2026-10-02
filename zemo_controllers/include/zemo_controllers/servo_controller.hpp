@@ -5,6 +5,8 @@
 #include "rclcpp_lifecycle/state.hpp"
 
 #include <vector>
+#include <deque>
+#include <mutex>
 #include <string>
 
 namespace zemo_controllers{
@@ -15,19 +17,18 @@ enum class ControlMode : uint8_t{
 };
 
 struct ServoTarget{
-    uint8_t joint_id;
+    std::string name;
 
     double position;
     double velocity;
     double acceleration;
-    double tolerance;
 };
 
 struct ActiveCommand{
     bool active{false};
 
     uint64_t start_time_ns;
-    double timeout{3000}; // ms
+    uint64_t timeout_ns{2000000000}; // ns
 
     bool sync_write{false};
     std::vector<ServoTarget> targets;   // Servos that are executing action goal
@@ -39,12 +40,14 @@ struct Joint{
     std::string name{"djura"};
     ControlMode mode{ControlMode::POSITION};
 
+    // hardware write interfaces
     std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> position_command_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> velocity_command_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> acceleration_command_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> write_type_command_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> sequence_command_handle; 
 
+    // hardware read interfaces
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> position_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> speed_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> load_handle;
@@ -75,12 +78,19 @@ private:
     std::vector<std::string> velocity_joints_;
     std::vector<Joint> joints_;
 
+    std::deque<ActiveCommand> pending_commands_;
+    std::vector<ActiveCommand> active_commands_;
+    std::mutex command_mutex_;
+    uint64_t next_sequence_{1};
+
     double min_voltage_{0.0};
     double max_voltage_{20.0};
     double max_temperature_;
     double max_current_;
-    double default_timeout_;
-    double default_tolerance_;
+    double tolerance_;
+
+    void send_command(const rclcpp::Time &time);
+    void check_active_servos(const rclcpp::Time &time);
 
 };
 

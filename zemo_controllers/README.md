@@ -3,7 +3,7 @@
 ```yaml
 servo_controller:
   ros__parameters:
-    update_rate: [hz]
+    update_rate: [Hz]
 
     position_joints: []
     velocity_joints: []
@@ -13,8 +13,7 @@ servo_controller:
     max_temperature: [C]
     max_current: [mA]
 
-    default_timeout: [s]
-    default_tolerance: [rad]
+    tolerance: [rad]
 ```
 
 ---
@@ -25,8 +24,7 @@ servo_controller:
 - `min_voltage` / `max_voltage` — allowed supply voltage range in V.
 - `max_temperature` — maximum servo temperature in °C.
 - `max_current` — maximum motor current in mA.
-- `default_timeout` — default command timeout in seconds.
-- `default_tolerance` — default position tolerance in radians.
+- `tolerance` — Position tolerance in radians.
 
 A joint must not be present in both `position_joints` and `velocity_joints`.
 

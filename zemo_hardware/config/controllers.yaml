@@ -25,8 +25,7 @@ servo_controller:
     max_temperature: 60.0     # ST3215 docs: /
     max_current: 2000.0       # ST3215 docs: 1500 [mA]
   
-    default_timeout: 2.0  
-    default_tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
+    tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
 
 
 
@@ -51,7 +50,6 @@ diff_drive_controller:
     # Use real hardware feedback from stm
     open_loop: false
 
-    publish_rate: 50.0
     cmd_vel_timeout: 0.5
 
     linear.x.min_velocity: -1.0
