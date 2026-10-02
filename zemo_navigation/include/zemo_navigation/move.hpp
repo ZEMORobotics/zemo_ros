@@ -4,6 +4,7 @@
 #include <chrono>
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "nav2_util/robot_utils.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_costmap_2d/costmap_topic_collision_checker.hpp"
 //#include "nav2_costmap_2d/costmap_subscriber.hpp"

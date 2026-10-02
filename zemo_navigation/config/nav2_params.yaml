@@ -1,0 +1,156 @@
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    enable_stamped_cmd_vel: true
+    controller_frequency: 20.0
+    costmap_update_timeout: 0.3
+    use_realtime_priority: false
+    publish_zero_velocity: true
+    action_server_result_timeout: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.05
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    #speed_limit_topic: speed_limit        # published by speed filter
+    odom_topic: "odom"
+    controller_plugins: ["FollowPath"]
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      stateful: True
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      critics:
+        - RotateToGoal
+        - Oscillation
+        - ObstacleFootprint
+        - PathAlign
+        - GoalAlign
+        - PathDist
+        - GoalDist
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      rolling_window: True
+      update_frequency: 15.0
+      publish_frequency: 8.0
+      transform_tolerance: 0.1
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      footprint_padding: 0.03
+      #footprint: [ [], [], [], [] ]
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        observation_sources: lidar
+        lidar: 
+          topic: /scan
+          data_type: "LaserScan"
+          expected_update_rate: 10.0
+          sensor_frame: base_link
+          inf_is_valid: false
+          marking: true
+          clearing: true
+          #obstacle_max_range: 2.5
+          #obstacle_min_range: 0.0
+          #raytrace_max_range: 3.0
+          #raytrace_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.25
+        cost_scaling_factor: 5.0
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    expected_planner_frequency: 10.0
+    costmap_update_timeout: 1.0
+    planner_plugins: ['GridBased']
+    GridBased:
+      plugin: 'nav2_navfn_planner::NavfnPlanner'
+
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      rolling_window: false
+      always_send_full_costmap: true
+      update_frequency: 15.0
+      publish_frequency: 8.0
+      transform_tolerance: 0.1
+      global_frame: map
+      robot_base_frame: base_link
+      footprint_padding: 0.03
+      #footprint: [ [], [], [], [] ]
+      plugins: ["obstacle_layer", "inflation_layer", "static_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        footprint_clearing_enabled: true
+        observation_sources: lidar
+        lidar: 
+          topic: /scan
+          data_type: "LaserScan"
+          expected_update_rate: 10.0
+          sensor_frame: base_link
+          inf_is_valid: false
+          marking: true
+          clearing: true
+          #obstacle_max_range: 2.5
+          #obstacle_min_range: 0.0
+          #raytrace_max_range: 3.0
+          #raytrace_min_range: 0.0
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+        enabled: true
+        subscribe_to_updates: true
+        footprint_clearing_enabled: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: true
+        inflation_radius: 0.25
+        cost_scaling_factor: 5.0
+
+behavior_server:
+  ros__parameters:
+    enable_stamped_cmd_vel: true
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin" 
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.2

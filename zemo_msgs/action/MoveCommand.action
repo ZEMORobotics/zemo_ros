@@ -10,7 +10,7 @@ zemo_msgs/MoveProperties angular_properties
 zemo_msgs/MoveProperties linear_properties
 
 bool ignore_obstacle
-bool enalble_sensor
+bool enable_sensor
 builtin_interfaces/Duration timeout
 uint8 mode
 

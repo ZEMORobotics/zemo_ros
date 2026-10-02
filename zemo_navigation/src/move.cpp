@@ -21,7 +21,7 @@ namespace zemo_navigation
       case MoveDebug::ERROR_MODE:
         return "ERROR_MODE, invalide mode value!";
       default:
-        return "";
+        return "JBG";
     }
   }
 
@@ -440,8 +440,8 @@ namespace zemo_navigation
       pose2d.y = current_pose.pose.position.y;
       pose2d.theta = tf2::getYaw(current_pose.pose.orientation);
 
-      // TODO puna formula
-      const double stopping_distance = stopping_distance_ + ((cmd_vel->twist.linear.x * cmd_vel->twist.linear.x) / (2 * command_->linear_properties.max_acceleration))
+      // TODO puna formula sa novim vrednsotima
+      const double stopping_distance = stopping_distance_ + ((cmd_vel->twist.linear.x * cmd_vel->twist.linear.x) / (2 * command_->linear_properties.max_acceleration * command_->linear_properties.stopping_coeff))
         + (std::fabs(cmd_vel->twist.linear.x) / update_rate_) + ((std::fabs(cmd_vel->twist.linear.x) * command_->linear_properties.max_acceleration) / (2 * command_->linear_properties.max_jerk));
       const double sim_position_change = sign(cmd_vel->twist.linear.x) * stopping_distance;
       pose2d.x += sim_position_change * cos(pose2d.theta);
