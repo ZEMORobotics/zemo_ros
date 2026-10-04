@@ -29,8 +29,6 @@ controller_interface::InterfaceConfiguration ServoController::state_interface_co
         conf_names.push_back(joint.name + "/position");
         conf_names.push_back(joint.name + "/velocity");
         conf_names.push_back(joint.name + "/load");
-        conf_names.push_back(joint.name + "/voltage");
-        conf_names.push_back(joint.name + "/temperature");
         conf_names.push_back(joint.name + "/moving");
         conf_names.push_back(joint.name + "/current");
     }
@@ -45,9 +43,6 @@ controller_interface::CallbackReturn ServoController::on_init(){
         auto_declare<std::vector<std::string>>("position_joints", std::vector<std::string>{});
         auto_declare<std::vector<std::string>>("velocity_joints", std::vector<std::string>{});
 
-        auto_declare<double>("max_voltage", 20.0);
-        auto_declare<double>("min_voltage", 3.0);
-        auto_declare<double>("max_temperature", 100.0);
         auto_declare<double>("max_current", 3000.0);
         auto_declare<double>("tolerance", 0.1);
     }
@@ -64,20 +59,20 @@ controller_interface::CallbackReturn ServoController::on_configure(const rclcpp_
 
     position_joints_ = get_node()->get_parameter("position_joints").as_string_array();
     velocity_joints_ = get_node()->get_parameter("velocity_joints").as_string_array();
-    max_voltage_ = get_node()->get_parameter("max_voltage").as_double();
-    min_voltage_ = get_node()->get_parameter("min_voltage").as_double();
-    max_temperature_ = get_node()->get_parameter("max_temperature").as_double();
     max_current_ = get_node()->get_parameter("max_current").as_double();
     tolerance_ = get_node()->get_parameter("tolerance").as_double();
 
     if(position_joints_.empty() && velocity_joints_.empty()){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "No servo joints configured! Don't waste CPU, turn of the controller!");
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "No servo joints configured! Don't waste CPU, turn off the controller!");
         return CallbackReturn::FAILURE;
     }
 
     joints_.clear();
-    joints_.reserve(position_joints_.size() + velocity_joints_.size());
-    active_commands_.reserve(position_joints_.size() + velocity_joints_.size());
+    size_t num_of_servos = position_joints_.size() + velocity_joints_.size();
+
+    joints_.reserve(num_of_servos);
+        
+    active_commands_.reserve(num_of_servos);
 
     for(auto &name : position_joints_){
         joints_.emplace_back();
@@ -133,21 +128,23 @@ controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_l
 
         // Position command interface is only avaliable for position mode(mode=0)
         if(joint.mode == ControlMode::POSITION){
-            if(!bind_command(joint.position_command_handle, "position"))
+            if(!bind_command(joint.position_command_handle, "position")){
+                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind position command interface!");
                 return CallbackReturn::ERROR;
+            }
         }
         
 
         if(!bind_command(joint.velocity_command_handle, "velocity") || !bind_command(joint.acceleration_command_handle, "acceleration") ||
            !bind_command(joint.write_type_command_handle, "write_type") || !bind_command(joint.sequence_command_handle, "sequence")){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind on or more: velocity, acceleration, write_type, sequence command interfaces!");
             return CallbackReturn::ERROR;
         }
 
         if(!bind_state(joint.position_handle, "position") || !bind_state(joint.speed_handle, "velocity") ||
-           !bind_state(joint.load_handle, "load") || !bind_state(joint.voltage_handle, "voltage") ||
-           !bind_state(joint.temperature_handle, "temperature") || !bind_state(joint.status_handle, "moving") ||
-           !bind_state(joint.current_handle, "current")){
-
+           !bind_state(joint.load_handle, "load") || !bind_state(joint.status_handle, "moving") || !bind_state(joint.current_handle, "current")){
+            
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind on or more state interfaces!");
             return CallbackReturn::ERROR;
         }
     }
@@ -165,12 +162,9 @@ controller_interface::CallbackReturn ServoController::on_deactivate(const rclcpp
         joint.position_handle.reset();
         joint.speed_handle.reset();
         joint.load_handle.reset();
-        joint.voltage_handle.reset();
         joint.current_handle.reset();
         joint.status_handle.reset();
-        joint.temperature_handle.reset();
     }
-
 
     return CallbackReturn::SUCCESS;
 }
@@ -186,7 +180,7 @@ void ServoController::send_command(const rclcpp::Time &time){
     // Lock mutex to see pending commands from action server.
     std::unique_lock<std::mutex> ul(command_mutex_, std::try_to_lock);
     // If mutex is already taken or there is no commands skip this func.
-    if(pending_commands_.empty() || !ul.owns_lock()) return;
+    if(!pending_commands_.empty() && ul.owns_lock()) return;
 
     // This moves ownership of command instead of copying it. Rust memory shenanigans.
     ActiveCommand command = std::move(pending_commands_.front());
@@ -200,7 +194,7 @@ void ServoController::send_command(const rclcpp::Time &time){
     command.start_time_ns = time.nanoseconds();
 
     for(auto& motor : command.targets){
-        // find the servo by name in vector. It stays as vector instead of unoredered map beacuse it is a trivial look up,
+        // find the servo by name in vector. It stays as vector instead of unordered map beacuse it is a trivial look up,
         // there is a max number of 10 servos per command. On average it would be 1-3 servos. Hashing uses some time in lookup,
         // so in this real time example, vector is better, note that joints_ vector is preallocated in on_configure().
         auto it = std::find_if(joints_.begin(), joints_.end(), [&](const Joint& m){
@@ -212,7 +206,9 @@ void ServoController::send_command(const rclcpp::Time &time){
             continue;
         }
 
-        auto& joint = *it;
+        Joint& joint = *it; 
+
+        // Default value for interfaces is double.
         if(joint.mode == ControlMode::POSITION)
             joint.position_command_handle->get().set_value(motor.position);
 
@@ -223,7 +219,6 @@ void ServoController::send_command(const rclcpp::Time &time){
     }
 
     active_commands_.push_back(std::move(command));
-
 }
 
 void ServoController::check_active_servos(const rclcpp::Time &time){
@@ -252,21 +247,7 @@ void ServoController::check_active_servos(const rclcpp::Time &time){
 
             auto &joint = *it;
 
-            const double voltage = joint.voltage_handle->get().get_value();
-            const double temperature = joint.temperature_handle->get().get_value();
             const double current = joint.current_handle->get().get_value();
-
-            if(voltage < min_voltage_ || voltage > max_voltage_){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo %s, voltage error! Reading: %lf V", joint.name.c_str(), voltage);
-                command.active = false;
-                break;
-            }
-
-            if(temperature > max_temperature_){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo %s, temperature error! Reading: %lf C", joint.name.c_str(), temperature);
-                command.active = false;
-                break;
-            }
 
             if(std::abs(current) > max_current_){
                 RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo %s, current error! Reading: %lf mA", joint.name.c_str(), current);
@@ -301,8 +282,7 @@ void ServoController::check_active_servos(const rclcpp::Time &time){
         if(!command.active) 
             cmd_it = active_commands_.erase(cmd_it);
         else 
-            cmd_it++;
-        
+            cmd_it++; 
     }
 }
 

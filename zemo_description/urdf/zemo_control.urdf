@@ -51,7 +51,7 @@
         </joint>
     </ros2_control>
 
-    <ros2_control name="ServoInterface_uart0" type="system">
+    <ros2_control name="ServoInterface_uart0" type="system" rw_rate=20>
         <hardware>
             <plugin>zemo_hardware::ServoInterface</plugin>
 

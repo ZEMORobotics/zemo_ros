@@ -15,16 +15,13 @@ controller_manager:
 
 servo_controller:
   ros__parameters:
-    update_rate: 25
+    # Update rate must be the same as rw_rate in urdf.
+    update_rate: 20
 
     position_joints: []
     velocity_joints: []
 
-    min_voltage: 7.0          # ST3215 docs: 6.0 [V]
-    max_voltage: 13.0         # ST3215 docs: 12.6 [V]
-    max_temperature: 60.0     # ST3215 docs: /
     max_current: 2000.0       # ST3215 docs: 1500 [mA]
-  
     tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
 
 

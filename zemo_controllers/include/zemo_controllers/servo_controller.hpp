@@ -51,8 +51,6 @@ struct Joint{
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> position_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> speed_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> load_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> voltage_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> temperature_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> status_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> current_handle;
 };
@@ -83,9 +81,6 @@ private:
     std::mutex command_mutex_;
     uint64_t next_sequence_{1};
 
-    double min_voltage_{0.0};
-    double max_voltage_{20.0};
-    double max_temperature_;
     double max_current_;
     double tolerance_;
 
