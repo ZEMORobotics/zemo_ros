@@ -8,6 +8,24 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    servo_controller:
+      type: zemo_controllers/ServoController
+
+
+
+servo_controller:
+  ros__parameters:
+    # Update rate must be the same as rw_rate in urdf.
+    update_rate: 20
+
+    position_joints: []
+    velocity_joints: []
+
+    max_current: 2000.0       # ST3215 docs: 1500 [mA]
+    tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
+
+
+
 diff_drive_controller:
   ros__parameters:
     left_wheel_names: ["wheel_left_joint"]
@@ -29,7 +47,6 @@ diff_drive_controller:
     # Use real hardware feedback from stm
     open_loop: false
 
-    publish_rate: 50.0
     cmd_vel_timeout: 0.5
 
     linear.x.min_velocity: -1.0
