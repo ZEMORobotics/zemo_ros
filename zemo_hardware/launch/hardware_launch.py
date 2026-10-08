@@ -23,6 +23,9 @@ def check_can_interface(interface='can0'):
 
 def launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time", default="false")
+    # enable_can_system = LaunchConfiguration("enable_can", default="true")
+    # enable_servo_system = LaunchConfiguration("enable_servo", default="true")
+
     log_level = "warn"  # info or warn or error or debug or fatal
     output_screen = "screen" # screen or log or both
 

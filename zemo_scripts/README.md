@@ -102,4 +102,8 @@ For DDS setup two functions are given:
 
 - subnet_dds : This is the default confg. This function configures DDS to LAN so that other devices can see ros2 topics. Used for debbuging.
 
+In ```/etc/systemd/system/wifi-powersave-off.service``` is a daemon service to turn off power_save with ```iw dev wlan0 set power_save off```.
+You can check if power_save is on or off with: ```iw wlan0 get power_save```. *wlan0* is network interface, if network is changed and wlan0 does not work, 
+you can check the interface with ```iw dev```.
+
 

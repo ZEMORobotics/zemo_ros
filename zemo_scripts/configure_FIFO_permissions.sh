@@ -1,5 +1,5 @@
-# This is for ros2_control, in order to maintain real time scheculing, ros2_control need higher priority which is not normally allowed for user space
-# This script contains all commands to enable that, and it should not be run again
+# This is for ros2_control, in order to maintain real time scheculing, ros2_control needs higher priority which is not normally allowed for user space.
+# This script contains all commands to enable that, and it should not be run again.
 
 set -e
 

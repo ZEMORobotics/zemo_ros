@@ -4,12 +4,19 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "zemo_msgs/action/servo_command.hpp"
+
 #include <vector>
 #include <deque>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 namespace zemo_controllers{
+
+using ServoAction = zemo_msgs::action::ServoCommand;
+using GoalHandle = rclcpp_action::ServerGoalHandle<ServoAction>;
 
 enum class ControlMode : uint8_t{
     POSITION=0,
@@ -28,11 +35,13 @@ struct ActiveCommand{
     bool active{false};
 
     uint64_t start_time_ns;
-    uint64_t timeout_ns{2000000000}; // ns
+    uint64_t timeout_ns{2000000000ULL}; // ns
 
     bool sync_write{false};
     std::vector<ServoTarget> targets;   // Servos that are executing action goal
+    std::shared_ptr<GoalHandle> goal_handle;
 };
+
 
 struct Joint{
     Joint(){};
@@ -50,7 +59,6 @@ struct Joint{
     // hardware read interfaces
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> position_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> speed_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> load_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> status_handle;
     std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> current_handle;
 };
@@ -66,23 +74,35 @@ public:
     controller_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State &previous_state) override;
     controller_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State &previous_state) override;
     controller_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
-    controller_interface::CallbackReturn on_cleanup(const rclcpp_lifecycle::State &previous_state) override;
 
 private:
     static constexpr const char* LOGGER = "zemo_controllers_servo";
+    double max_current_;
+    double tolerance_;
+    double velocity_tolerance_;
 
-
+    // Parsed data from .yaml
     std::vector<std::string> position_joints_;
     std::vector<std::string> velocity_joints_;
     std::vector<Joint> joints_;
 
+    // Action server variables
     std::deque<ActiveCommand> pending_commands_;
     std::vector<ActiveCommand> active_commands_;
+
     std::mutex command_mutex_;
     uint64_t next_sequence_{1};
 
-    double max_current_;
-    double tolerance_;
+    // Action server shenanigans
+    rclcpp_action::Server<ServoAction>::SharedPtr action_server_;
+    // rclcpp::TimerBase::SharedPtr action_timer_;
+
+    rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const ServoAction::Goal> goal);
+    rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandle> goal_handle);
+
+
+    void handle_accepted(const std::shared_ptr<GoalHandle> goal_handle);
+    void process_action_results();
 
     void send_command(const rclcpp::Time &time);
     void check_active_servos(const rclcpp::Time &time);

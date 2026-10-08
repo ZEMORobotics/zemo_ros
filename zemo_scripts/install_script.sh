@@ -37,6 +37,7 @@ sudo apt -y install \
 	ros-${ROS_DISTRO}-ruckig \
 	can-utils \
 	python3-pip \
+	iw \
 	htop \
 	libgpiod-dev \
 	gpiod

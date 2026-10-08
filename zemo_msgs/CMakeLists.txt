@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MoveProperties.msg"
   "msg/MoveDebug.msg"
   "action/MoveCommand.action"
+  "action/ServoCommand.action"
   DEPENDENCIES geometry_msgs
 )
 

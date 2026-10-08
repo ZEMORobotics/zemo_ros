@@ -1,0 +1,16 @@
+uint8 SUCCESS = 0
+uint8 TIMEOUT = 1
+uint8 CURRENT = 2
+uint8 ERROR = 3
+
+string[] names
+float64[] positions
+float64[] velocities
+float64[] accelerations
+bool sync_write
+uint32 timeout_ms
+---
+float64 last_position
+uint8 result
+---
+# no feedback as you fucking don't need one

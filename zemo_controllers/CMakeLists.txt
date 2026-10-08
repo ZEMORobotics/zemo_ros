@@ -12,6 +12,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(zemo_msgs REQUIRED)
 
 set(SERVO servo_controller)
 
@@ -44,5 +45,6 @@ ament_target_dependencies(${SERVO}
   controller_interface
   hardware_interface
   pluginlib
+  zemo_msgs
 )
 ament_package()

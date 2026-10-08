@@ -23,6 +23,7 @@ servo_controller:
 
     max_current: 2000.0       # ST3215 docs: 1500 [mA]
     tolerance: 0.03   # ST3215 docs: 0.00153589 [rad]（2pi/4096）
+    velocity_tolerance: 0.5
 
 
 
