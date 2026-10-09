@@ -48,7 +48,7 @@ namespace zemo_navigation
     command_->linear_properties = goal->linear_properties;
     command_->angular_properties = goal->angular_properties;
     command_->ignore_obstacle = goal->ignore_obstacle;
-    command_->enalble_sensor = goal->enalble_sensor;
+    command_->enable_sensor = goal->enable_sensor;
     command_->timeout = goal->timeout;
     command_->mode = goal->mode;
 
@@ -79,7 +79,6 @@ namespace zemo_navigation
     {
       goal_handle->abort(result_);
       RCLCPP_WARN(get_logger(), "Init failed");
-      //goal_active_ = false;
       return;
     }
 
@@ -126,34 +125,6 @@ namespace zemo_navigation
 
   }
 
-  bool MoveActionServer::update_odom_target_tf()
-  {
-    tf2::Transform tf_global_target;
-    tf_global_target.setOrigin(tf2::Vector3(command_->target.x, command_->target.y, 0.0));
-    tf_global_target.setRotation(tf2::Quaternion(tf2::Vector3(0, 0, 1), command_->target.theta));
-
-    geometry_msgs::msg::TransformStamped tf_global_odom_message;
-    try
-    {
-      tf_global_odom_message = tf_->lookupTransform(command_->header.frame_id, odom_frame_, command_->header.stamp);
-    }
-    catch (const tf2::TransformException &ex)
-    {
-      result_->error = MoveDebug::ERROR_MISSING_TRANSFORM;
-      //state_msg_.error = mep3_msgs::msg::MoveState::ERROR_MISSING_TRANSFORM;
-      //state_pub_->publish(state_msg_);
-
-      return false;
-    }
-
-    tf2::Transform tf_global_odom;
-    tf2::convert(tf_global_odom_message.transform, tf_global_odom);
-    tf_odom_target_ = tf_global_odom.inverse() * tf_global_target;
-    //target_updated_ = true;   todo
-
-    return true;
-  }
-
   bool MoveActionServer::init_move()
   {
     // Apply defaults
@@ -183,7 +154,6 @@ namespace zemo_navigation
       command_->angular_properties.stopping_coeff = default_command_->angular_properties.stopping_coeff;
     
     end_time_ = command_->timeout + now();
-    //is_sensor_detected_ = false;      // TODO ovde bi uzimali qos
     finished_ = false;
     result_->error = MoveDebug::ERROR_NONE;
 
@@ -195,13 +165,18 @@ namespace zemo_navigation
     // Kickoff FSM
     lock_tf_odom_base_ = false;
     reversing_ = false;
-    //reversing_coeff_ = 1.0;
     if (command_->mode & MoveCommand::Goal::REVERSE_MODE)
     {
       reversing_ = true;
-      //reversing_coeff_ = -1.0;
-
     }
+
+    // TODO dodati posebnu proveru za prednji zadnji senzor
+    if (command_->enable_sensor && is_sensor_detected_)
+    {
+      return false;
+    }
+    
+
     if (command_->mode & MoveCommand::Goal::MODE_MOVE_TO_GOAL)
     {
       state_ = STATE_ROTATING_TOWARDS_GOAL;
@@ -214,6 +189,34 @@ namespace zemo_navigation
     }
     result_->error = MoveDebug::ERROR_MODE;
     return false;
+  }
+
+  bool MoveActionServer::update_odom_target_tf()
+  {
+    tf2::Transform tf_global_target;
+    tf_global_target.setOrigin(tf2::Vector3(command_->target.x, command_->target.y, 0.0));
+    tf_global_target.setRotation(tf2::Quaternion(tf2::Vector3(0, 0, 1), command_->target.theta));
+
+    geometry_msgs::msg::TransformStamped tf_global_odom_message;
+    try
+    {
+      tf_global_odom_message = tf_->lookupTransform(command_->header.frame_id, odom_frame_, command_->header.stamp);
+    }
+    catch (const tf2::TransformException &ex)
+    {
+      result_->error = MoveDebug::ERROR_MISSING_TRANSFORM;
+      //state_msg_.error = mep3_msgs::msg::MoveState::ERROR_MISSING_TRANSFORM;
+      //state_pub_->publish(state_msg_);
+
+      return false;
+    }
+
+    tf2::Transform tf_global_odom;
+    tf2::convert(tf_global_odom_message.transform, tf_global_odom);
+    tf_odom_target_ = tf_global_odom.inverse() * tf_global_target;
+    //target_updated_ = true;   todo
+
+    return true;
   }
 
   double MoveActionServer::get_remaining_final_orientation(const tf2::Transform &tf_base_target)
@@ -598,7 +601,7 @@ namespace zemo_navigation
     }
     else if (msg->data == 1)
     {
-      RCLCPP_INFO(this->get_logger(), "Senzos is detected");
+      // instant_robot_stop();
       is_sensor_detected_ = true;
     }
   }
@@ -627,8 +630,9 @@ namespace zemo_navigation
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_);
 
     ir_sensor_subscription_ = this->create_subscription<std_msgs::msg::Int32>(
-        "/ir_sensor_state", 10, std::bind(&MoveActionServer::ir_sensor_callback, this, std::placeholders::_1));
+      "/ir_sensor_state", 10, std::bind(&MoveActionServer::ir_sensor_callback, this, std::placeholders::_1));
 
+    
     // Read parameters
     declare_parameter("update_rate", rclcpp::ParameterValue(50));
     get_parameter("update_rate", update_rate_);
@@ -653,7 +657,7 @@ namespace zemo_navigation
     get_parameter("odom_frame", odom_frame_);
 
     declare_parameter("debug_active", rclcpp::ParameterValue(false));
-    get_parameter("debug_active", debug_node_active_);
+    get_parameter("debug_active", debug_mode_active_);
 
     // Linear
     declare_parameter("linear.max_velocity", rclcpp::ParameterValue(0.1));
@@ -699,7 +703,10 @@ namespace zemo_navigation
     //declare_parameter("angular.stuck_coeff", rclcpp::ParameterValue(0.1));
     //get_parameter("angular.stuck_coeff", angular_stuck_coeff_);
   }
-}
+
+}   // namespace zemo_navigation
+
+
 
 #include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(zemo_navigation::MoveActionServer)

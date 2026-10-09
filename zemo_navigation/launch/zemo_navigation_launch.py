@@ -4,7 +4,8 @@ from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes
-from launch_ros.descriptions import ComposableNode
+from launch_ros.descriptions import ComposableNode, ParameterFile
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
@@ -15,6 +16,16 @@ def generate_launch_description():
         package_dir,
         "config",
         "nav2_params.yaml"
+    )
+
+    configured_params = ParameterFile(
+        RewrittenYaml(
+            source_file=params_file,
+            root_key="",
+            param_rewrites={},
+            convert_types=True,
+        ),
+        allow_substs=True,
     )
 
     map_file = os.path.join(
@@ -28,6 +39,7 @@ def generate_launch_description():
         namespace="",
         package="rclcpp_components",
         executable="component_container_mt",
+        parameters=[configured_params],
         output="screen",
     )
 
@@ -38,42 +50,42 @@ def generate_launch_description():
                 package="zemo_navigation",
                 plugin="zemo_navigation::MoveActionServer",
                 name="move",
-                parameters=[params_file],
+                parameters=[configured_params],
             ),
 
             ComposableNode(
                 package="nav2_controller",
                 plugin="nav2_controller::ControllerServer",
                 name="controller_server",
-                parameters=[params_file],
+                parameters=[configured_params],
             ),
 
             ComposableNode(
                 package="nav2_planner",
                 plugin="nav2_planner::PlannerServer",
                 name="planner_server",
-                parameters=[params_file],
+                parameters=[configured_params],
             ),
 
             ComposableNode(
                 package="nav2_behaviors",
                 plugin="behavior_server::BehaviorServer",
                 name="behavior_server",
-                parameters=[params_file],
+                parameters=[configured_params],
             ),
 
-            ComposableNode(
-                package="nav2_map_server",
-                plugin="nav2_map_server::MapServer",
-                name="map_server",
-                parameters=[
-                    {
-                        'yaml_filename': map_file,
-                        'topic_name': 'map',
-                        'frame_id': 'map',
-                    }
-                ],
-            ),
+            #ComposableNode(
+            #    package="nav2_map_server",
+            #    plugin="nav2_map_server::MapServer",
+            #    name="map_server",
+            #    parameters=[
+            #        {
+            #            'yaml_filename': map_file,
+            #            'topic_name': 'map',
+            #            'frame_id': 'map',
+            #        }
+            #    ],
+            #),
 
             ComposableNode(
                 package="nav2_lifecycle_manager",
@@ -83,7 +95,7 @@ def generate_launch_description():
                     {
                         "autostart": True,
                         "node_names": [
-                            "map_server",
+                            #"map_server",
                             "controller_server",
                             "planner_server",
                             "behavior_server",

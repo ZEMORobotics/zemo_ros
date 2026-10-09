@@ -18,6 +18,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(zemo_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(pluginlib REQUIRED)
 find_package(ruckig REQUIRED)
 
 add_library(move SHARED src/move.cpp)
@@ -40,6 +41,7 @@ ament_target_dependencies(
   zemo_msgs
   std_msgs
   geometry_msgs
+  pluginlib
 )
 target_link_libraries(move ruckig::ruckig)
 
@@ -49,8 +51,31 @@ rclcpp_components_register_node(
   EXECUTABLE move_server
 )
 
+add_library(additional_obstacle_layer SHARED
+  src/AdditionalObstacleLayer.cpp)
+
+target_include_directories(additional_obstacle_layer PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(
+  additional_obstacle_layer
+  rclcpp
+  nav2_costmap_2d
+  nav2_util
+  geometry_msgs
+  std_msgs
+  pluginlib
+)
+
+pluginlib_export_plugin_description_file(nav2_costmap_2d additional_obstacle_layer.xml)
+
+
 install(
-  TARGETS move
+  TARGETS 
+    move
+    additional_obstacle_layer 
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

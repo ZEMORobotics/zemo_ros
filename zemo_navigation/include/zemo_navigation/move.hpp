@@ -70,8 +70,7 @@ namespace zemo_navigation
 
             void update_debug_msg(tf2::Transform &tf_base_target);                          // TODO Debug msg create
             std::shared_ptr<MoveDebug> debug_msg_;
-            bool debug_node_active_;
-
+            bool debug_mode_active_;
 
             int update_rate_;
             double stopping_distance_;
@@ -79,8 +78,6 @@ namespace zemo_navigation
             rclcpp_action::Server<MoveCommand>::SharedPtr action_server_;
             std::shared_ptr<GoalHandleMove> current_goal_;
             bool finished_;
-            //bool goal_active_{false};
-            //std::mutex goal_mutex_;
 
             rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_pub_;
             rclcpp::Publisher<MoveDebug>::SharedPtr debug_pub_;
@@ -113,9 +110,8 @@ namespace zemo_navigation
             rclcpp::Duration debouncing_duration_{0, 0};
             void debouncing_reset();
 
-            bool is_sensor_detected_;
+            bool is_sensor_detected_{false};
             bool reversing_;
-            double reversing_coeff_;             // regulate je po x pa ne treba
 
             ruckig::Ruckig<1> *rotation_ruckig_{nullptr};
             ruckig::InputParameter<1> rotation_ruckig_input_;
@@ -138,7 +134,8 @@ namespace zemo_navigation
 
                     
 
-    };
-}
+    };      // class MoveActionServer
+
+}       // namespace zemo_navigation
 
 #endif

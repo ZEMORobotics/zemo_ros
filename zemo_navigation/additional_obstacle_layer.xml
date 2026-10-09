@@ -1,0 +1,5 @@
+<library path="additional_obstacle_layer">
+<class type="zemo_navigation::AdditionalObstacleLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>This plugin is used for predefined obstacles on map that are activated in during the match</description>
+</class>
+</library>
