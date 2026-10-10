@@ -18,6 +18,9 @@ namespace zemo_controllers{
 using ServoAction = zemo_msgs::action::ServoCommand;
 using GoalHandle = rclcpp_action::ServerGoalHandle<ServoAction>;
 
+using command_interface_t = std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>>;
+using state_interface_t = std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>>;
+
 enum class ControlMode : uint8_t{
     POSITION=0,
     VELOCITY=1
@@ -44,23 +47,20 @@ struct ActiveCommand{
 
 
 struct Joint{
-    Joint(){};
+    // hardware write interfaces
+    command_interface_t position_command_handle;
+    command_interface_t velocity_command_handle;
+    command_interface_t acceleration_command_handle;
+    command_interface_t joint_sequence_command_handle;
+
+    // hardware read interfaces
+    state_interface_t position_handle;
+    state_interface_t speed_handle;
+    state_interface_t status_handle;
+    state_interface_t current_handle;
 
     std::string name{"djura"};
     ControlMode mode{ControlMode::POSITION};
-
-    // hardware write interfaces
-    std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> position_command_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> velocity_command_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> acceleration_command_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> write_type_command_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedCommandInterface>> sequence_command_handle; 
-
-    // hardware read interfaces
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> position_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> speed_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> status_handle;
-    std::optional<std::reference_wrapper<hardware_interface::LoanedStateInterface>> current_handle;
 };
 
 class ServoController : public controller_interface::ControllerInterface{
@@ -77,13 +77,16 @@ public:
 
 private:
     static constexpr const char* LOGGER = "zemo_controllers_servo";
+    // .yaml parameters
     double max_current_;
     double tolerance_;
     double velocity_tolerance_;
+    std::string port_;
 
-    // Parsed data from .yaml
     std::vector<std::string> position_joints_;
     std::vector<std::string> velocity_joints_;
+
+    // Parsed data from .yaml
     std::vector<Joint> joints_;
 
     // Action server variables
@@ -97,15 +100,48 @@ private:
     rclcpp_action::Server<ServoAction>::SharedPtr action_server_;
     // rclcpp::TimerBase::SharedPtr action_timer_;
 
+    command_interface_t write_type_command_handle_;
+    command_interface_t sequence_command_handle_; 
+
+// Functions
+private:
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const ServoAction::Goal> goal);
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandle> goal_handle);
-
 
     void handle_accepted(const std::shared_ptr<GoalHandle> goal_handle);
     void process_action_results();
 
     void send_command(const rclcpp::Time &time);
     void check_active_servos(const rclcpp::Time &time);
+
+
+    bool bind_command(command_interface_t& handle, const std::string& name, const std::string& type){
+        auto it = std::find_if(command_interfaces_.begin(), command_interfaces_.end(), [&](auto& interface){
+            return interface.get_prefix_name() == name && interface.get_interface_name() == type;
+        });
+
+        if(it == command_interfaces_.end()){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Missing command interface: %s/%s", name.c_str(), type.c_str());
+            return false;
+        }
+
+        handle = std::ref(*it);
+        return true;
+    };
+
+    bool bind_state(state_interface_t& handle, const std::string& name, const std::string& type){
+        auto it = std::find_if(state_interfaces_.begin(), state_interfaces_.end(), [&](auto& interface){
+            return interface.get_prefix_name() == name && interface.get_interface_name() == type;
+        });
+
+        if(it == state_interfaces_.end()){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Missing state interface: %s/%s", name.c_str(), type.c_str());
+            return false;
+        }
+
+        handle = std::ref(*it);
+        return true;
+    };
 
 };
 

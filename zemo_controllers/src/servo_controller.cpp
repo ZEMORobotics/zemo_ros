@@ -14,10 +14,10 @@ controller_interface::InterfaceConfiguration ServoController::command_interface_
 
         conf_names.push_back(joint.name + "/velocity");
         conf_names.push_back(joint.name + "/acceleration");
-
-        conf_names.push_back(joint.name + "/write_type");
-        conf_names.push_back(joint.name + "/sequence");
     }
+
+    conf_names.push_back(port_ + "/write_type");
+    conf_names.push_back(port_ + "/sequence");
 
     return {controller_interface::interface_configuration_type::INDIVIDUAL, conf_names};
 }
@@ -45,6 +45,7 @@ controller_interface::CallbackReturn ServoController::on_init(){
         auto_declare<double>("max_current", 3000.0);
         auto_declare<double>("tolerance", 0.1);
         auto_declare<double>("velocity_tolerance", 0.5);
+        auto_declare<std::string>("usb_port", "/dev/ttyAMA0");
     }
     catch(const std::exception & e){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Exception thrown during init stage with message: %s", e.what());
@@ -59,12 +60,18 @@ controller_interface::CallbackReturn ServoController::on_configure(const rclcpp_
 
     position_joints_ = get_node()->get_parameter("position_joints").as_string_array();
     velocity_joints_ = get_node()->get_parameter("velocity_joints").as_string_array();
+    port_ = get_node()->get_parameter("usb_port").as_string();
     max_current_ = get_node()->get_parameter("max_current").as_double();
     tolerance_ = get_node()->get_parameter("tolerance").as_double();
     velocity_tolerance_ = get_node()->get_parameter("velocity_tolerance").as_double();
 
     if(position_joints_.empty() && velocity_joints_.empty()){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "No servo joints configured! Don't waste CPU, turn off the controller!");
+        return CallbackReturn::FAILURE;
+    }
+
+    if(port_.empty()){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Didn't specify the usb port for servo motors!");
         return CallbackReturn::FAILURE;
     }
 
@@ -95,54 +102,22 @@ controller_interface::CallbackReturn ServoController::on_configure(const rclcpp_
 }   
 
 controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_lifecycle::State &/*previous_state*/){
+    if(!bind_command(write_type_command_handle_, port_, "write_type") || !bind_command(sequence_command_handle_, port_, "sequence")) 
+        return CallbackReturn::ERROR;
 
     for(auto& joint : joints_){
-        auto bind_command = [&](auto& handle, const char *type) -> bool{
-            auto it = std::find_if(command_interfaces_.begin(), command_interfaces_.end(), [&](auto& interface){
-                return interface.get_prefix_name() == joint.name && interface.get_interface_name() == type;
-            });
-
-            if(it == command_interfaces_.end()){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Mising command interface: %s%s", joint.name.c_str(), type);
-                return false;
-            }
-
-            handle = std::ref(*it);
-            return true;
-        };
-
-        auto bind_state = [&](auto& handle, const char *type) -> bool{
-            auto it = std::find_if(state_interfaces_.begin(), state_interfaces_.end(), [&](auto& interface){
-                return interface.get_prefix_name() == joint.name && interface.get_interface_name() == type;
-            });
-
-            if(it == state_interfaces_.end()){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Mising state interface: %s%s", joint.name.c_str(), type);
-                return false;
-            }
-
-            handle = std::ref(*it);
-            return true;
-        };
-
         // Position command interface is only avaliable for position mode(mode=0)
         if(joint.mode == ControlMode::POSITION){
-            if(!bind_command(joint.position_command_handle, "position")){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind position command interface!");
+            if(!bind_command(joint.position_command_handle, joint.name, "position")) 
                 return CallbackReturn::ERROR;
-            }
         }
 
-        if(!bind_command(joint.velocity_command_handle, "velocity") || !bind_command(joint.acceleration_command_handle, "acceleration") ||
-           !bind_command(joint.write_type_command_handle, "write_type") || !bind_command(joint.sequence_command_handle, "sequence")){
-            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind on or more: velocity, acceleration, write_type, sequence command interfaces!");
+        if(!bind_command(joint.velocity_command_handle, joint.name, "velocity") || !bind_command(joint.acceleration_command_handle, joint.name, "acceleration") ||
+            !bind_command(joint.joint_sequence_command_handle, joint.name, "joint_sequence")); 
             return CallbackReturn::ERROR;
-        }
 
-        if(!bind_state(joint.position_handle, "position") || !bind_state(joint.speed_handle, "velocity") ||
-            !bind_state(joint.status_handle, "moving") || !bind_state(joint.current_handle, "current")){
-            
-            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to bind on or more state interfaces!");
+        if(!bind_state(joint.position_handle, joint.name, "position") || !bind_state(joint.speed_handle, joint.name, "velocity") ||
+            !bind_state(joint.status_handle, joint.name, "moving") || !bind_state(joint.current_handle, joint.name, "current")){
             return CallbackReturn::ERROR;
         }
     }
@@ -161,12 +136,14 @@ controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_l
     return CallbackReturn::SUCCESS;
 }
 controller_interface::CallbackReturn ServoController::on_deactivate(const rclcpp_lifecycle::State &/*previous_state*/){
+    write_type_command_handle_.reset();
+    sequence_command_handle_.reset();
+
     for(auto& joint : joints_){
         joint.position_command_handle.reset();
         joint.velocity_command_handle.reset();
         joint.acceleration_command_handle.reset();
-        joint.write_type_command_handle.reset();
-        joint.sequence_command_handle.reset();
+        joint.joint_sequence_command_handle.reset();
 
         joint.position_handle.reset();
         joint.speed_handle.reset();
@@ -226,12 +203,14 @@ void ServoController::send_command(const rclcpp::Time &time){
 
         success &= joint.velocity_command_handle->get().set_value(motor.velocity);
         success &= joint.acceleration_command_handle->get().set_value(motor.acceleration);
-        success &= joint.write_type_command_handle->get().set_value(command.sync_write ? 1.0 : 0.0);
-        success &= joint.sequence_command_handle->get().set_value((double)sequence);
+        success &= joint.joint_sequence_command_handle->get().set_value((double)sequence);
     }
 
+    success &= write_type_command_handle_->get().set_value(command.sync_write ? 1.0 : 0.0);
+    success &= sequence_command_handle_->get().set_value((double)sequence);
+
     if(!success){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to set commande interfaces.");
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to set command interfaces.");
 
         auto result = std::make_shared<ServoAction::Result>();
         result->result = ServoAction::Goal::ERROR;

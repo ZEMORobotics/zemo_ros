@@ -68,17 +68,39 @@
             <command_interface name="position"/>
             <command_interface name="velocity"/>
             <command_interface name="acceleration"/>
+            <command_interface name="joint_sequence"/>
 
             <state_interface name="position"/>
             <state_interface name="velocity"/>
+            <state_interface name="moving"/>
+            <state_interface name="current"/>
         </joint>
 
     </ros2_control>
 
-    <!-- <ros2_control name="ServoInterface_uart1" type="system">
+    <!-- <ros2_control name="ServoInterface_uart1" type="system" rw_rate=20>
         <hardware>
             <plugin>zemo_hardware::ServoInterface</plugin>
+
+            <param name="port">/dev/ttyAMA1</param>
+            <param name="baudrate">115200</param>
+            <param name="protocol_type">sms_sts</param>
+            <param name="tx_en_pin">67</param>
+            <param name="rx_en_pin">69</param>
         </hardware>
+
+        <joint name="st1">
+            <param name="id">1</param>
+            <param name="mode">${servo_mode_position}</param>
+            <command_interface name="position"/>
+            <command_interface name="velocity"/>
+            <command_interface name="acceleration"/>
+
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+            <state_interface name="moving"/>
+            <state_interface name="current"/>
+        </joint>
 
 
     </ros2_control> -->
