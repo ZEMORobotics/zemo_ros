@@ -57,10 +57,15 @@
 
             <param name="port">/dev/ttyAMA0</param>
             <param name="baudrate">115200</param>
-            <param name="protocol_type">sms_sts</param> <!-- Waveshare ST3215 protocol -->
+            <param name="protocol">sms_sts</param> <!-- Waveshare ST3215 protocol -->
             <param name="tx_en_pin">23</param>
             <param name="rx_en_pin">24</param>
         </hardware>
+
+        <gpio name="ttyAMA0">
+            <command_interface name="write_type"/>
+            <command_interface name="sequence"/>
+        </gpio>
 
         <joint name="m1">
             <param name="id">1</param>

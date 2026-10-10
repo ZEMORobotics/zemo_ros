@@ -15,6 +15,9 @@
 
 namespace zemo_hardware{
 
+using command_interface_t = hardware_interface::CommandInterface::SharedPtr;
+using state_interface_t = hardware_interface::StateInterface::SharedPtr;
+
 enum class ProtocolType{
     SMS_STS, HLSCL, SCS0009, SCSCL
 };
@@ -33,20 +36,23 @@ static std::unordered_map<std::string, ProtocolType> allowed_protocols{
 using ServoDriver = std::variant<SMS_STS, HLSCL, SCS0009, SCSCL>;
 enum ControlMode : uint8_t {POSITION=0, VELOCITY=1};
 
-struct JointValue{
-    double position{0.0};
-    double velocity{0.0};
-    double acceleration{0.0};
-};
 
 struct Joint{
     Joint(){};
 
+    command_interface_t position_cmd;
+    command_interface_t velocity_cmd;
+    command_interface_t acceleration_cmd;
+    command_interface_t joint_sequence_cmd;
+
+    state_interface_t position_state;
+    state_interface_t velocity_state;
+    state_interface_t moving_state;
+    state_interface_t current_state;
+
     uint8_t id{1};
     ControlMode mode{ControlMode::POSITION};
-    
-    JointValue state{};
-    JointValue command{};
+    std::string name;
 };
 
 class ServoInterface : public hardware_interface::SystemInterface{
@@ -64,17 +70,20 @@ public:
     hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 private:
     static constexpr const char* LOGGER = "zemo_hardware_servo";
+    static constexpr const int32_t retry_count_ = 10;
 
     ServoDriver driver_;
 
     std::string port_{"/dev/ttyAMA0"};
-    std::string protocol_type_{"sms_sts"};
-    ProtocolType protocol_;
+    ProtocolType protocol_{ProtocolType::SMS_STS};
     uint8_t tx_enable_pin_{23};
     uint8_t rx_enable_pin_{24};
     uint32_t baudrate_{115200};
 
     std::vector<Joint> joint_list_;
+
+    command_interface_t write_type_cmd_;
+    command_interface_t sequence_cmd_;
 };
 
 } // namespace zemo_hardware
