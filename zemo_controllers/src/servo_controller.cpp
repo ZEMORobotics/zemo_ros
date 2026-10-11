@@ -14,6 +14,7 @@ controller_interface::InterfaceConfiguration ServoController::command_interface_
 
         conf_names.push_back(joint.name + "/velocity");
         conf_names.push_back(joint.name + "/acceleration");
+        conf_names.push_back(joint.name + "/joint_sequence");
     }
 
     conf_names.push_back(port_ + "/write_type");
@@ -45,7 +46,7 @@ controller_interface::CallbackReturn ServoController::on_init(){
         auto_declare<double>("max_current", 3000.0);
         auto_declare<double>("tolerance", 0.1);
         auto_declare<double>("velocity_tolerance", 0.5);
-        auto_declare<std::string>("usb_port", "/dev/ttyAMA0");
+        auto_declare<std::string>("usb_port", "ttyAMA0");
     }
     catch(const std::exception & e){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Exception thrown during init stage with message: %s", e.what());
@@ -79,8 +80,9 @@ controller_interface::CallbackReturn ServoController::on_configure(const rclcpp_
     size_t num_of_servos = position_joints_.size() + velocity_joints_.size();
 
     joints_.reserve(num_of_servos*2);
-    active_commands_.reserve(num_of_servos*2);
-    // goal_handles_.reserve(num_of_servos);
+    
+    current_pending_command_.reset();
+    current_active_command_.reset();
 
     for(auto &name : position_joints_){
         joints_.emplace_back();
@@ -105,6 +107,11 @@ controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_l
     if(!bind_command(write_type_command_handle_, port_, "write_type") || !bind_command(sequence_command_handle_, port_, "sequence")) 
         return CallbackReturn::ERROR;
 
+    if(!sequence_command_handle_->get().set_value((double)0.0)){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to activate the controller. Can't set sequence to 0");
+        return CallbackReturn::ERROR;
+    }
+
     for(auto& joint : joints_){
         // Position command interface is only avaliable for position mode(mode=0)
         if(joint.mode == ControlMode::POSITION){
@@ -113,8 +120,9 @@ controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_l
         }
 
         if(!bind_command(joint.velocity_command_handle, joint.name, "velocity") || !bind_command(joint.acceleration_command_handle, joint.name, "acceleration") ||
-            !bind_command(joint.joint_sequence_command_handle, joint.name, "joint_sequence")); 
-            return CallbackReturn::ERROR;
+            !bind_command(joint.joint_sequence_command_handle, joint.name, "joint_sequence")){
+                return CallbackReturn::ERROR;
+            }
 
         if(!bind_state(joint.position_handle, joint.name, "position") || !bind_state(joint.speed_handle, joint.name, "velocity") ||
             !bind_state(joint.status_handle, joint.name, "moving") || !bind_state(joint.current_handle, joint.name, "current")){
@@ -129,9 +137,6 @@ controller_interface::CallbackReturn ServoController::on_activate(const rclcpp_l
         std::bind(&ServoController::handle_cancel, this, std::placeholders::_1),
         std::bind(&ServoController::handle_accepted, this, std::placeholders::_1)
     );
-
-    // int64_t period = 1000 / get_update_rate(); // in ms.
-    // action_timer_ = get_node()->create_wall_timer(std::chrono::milliseconds(period), std::bind(&ServoController::process_action_results, this));
 
     return CallbackReturn::SUCCESS;
 }
@@ -151,12 +156,13 @@ controller_interface::CallbackReturn ServoController::on_deactivate(const rclcpp
         joint.status_handle.reset();
     }
 
-    active_commands_.clear();
+    current_active_command_.reset();
     {
         std::lock_guard<std::mutex> lock(command_mutex_);
-        pending_commands_.clear();
+        current_pending_command_.reset();
     }
     action_server_.reset();
+    command_busy_.store(false);
 
     return CallbackReturn::SUCCESS;
 }
@@ -168,34 +174,29 @@ controller_interface::return_type ServoController::update(const rclcpp::Time &ti
 }
 
 void ServoController::send_command(const rclcpp::Time &time){
+    // If there is active command ongoing, skip this.
+    if(current_active_command_) return;
 
     // Lock mutex to see pending commands from action server.
     std::unique_lock<std::mutex> ul(command_mutex_, std::try_to_lock);
+
     // If mutex is already taken or there is no commands skip this func.
-    if(!ul.owns_lock() || pending_commands_.empty()) return;
+    if(!ul.owns_lock() || !current_pending_command_) return;
 
-    // This moves ownership of command instead of copying it. Rust memory shenanigans.
-    // TODO: Find a way to staticly allocate memory for pending_commands_ as dynamic memory allocation is not RT safe.
-    ActiveCommand command = std::move(pending_commands_.front());
-    pending_commands_.pop_front();
-
+    ActiveCommand command = std::move(*current_pending_command_);
+    current_pending_command_.reset();
     ul.unlock();
 
     const uint64_t sequence = next_sequence_++;
 
-    command.active = true;
     command.start_time_ns = time.nanoseconds();
     bool success = true;    // This bool does absolutely nothing, it is here to satisfy ros2 warnings.
 
-    for(auto& motor : command.targets){
+    for(ServoTarget& motor : command.targets){
         // find the servo by name in vector. It stays as vector instead of unordered map beacuse it is a trivial look up,
         // there is a practical max number of 10 servos per command. On average it would be 1-3 servos. Hashing uses some time in lookup,
         // so in this real time example, vector is better, note that joints_ vector is preallocated in on_configure().
-        auto it = std::find_if(joints_.begin(), joints_.end(), [&](const Joint& m){
-            return motor.name == m.name;
-        });
-
-        Joint& joint = *it; 
+        Joint &joint = joints_[motor.index]; 
 
         // Default value for interfaces is double.
         if(joint.mode == ControlMode::POSITION)
@@ -206,8 +207,11 @@ void ServoController::send_command(const rclcpp::Time &time){
         success &= joint.joint_sequence_command_handle->get().set_value((double)sequence);
     }
 
-    success &= write_type_command_handle_->get().set_value(command.sync_write ? 1.0 : 0.0);
-    success &= sequence_command_handle_->get().set_value((double)sequence);
+    if(success)
+        success = write_type_command_handle_->get().set_value(command.sync_write ? 1.0 : 0.0);
+    
+    if(success)
+        success = sequence_command_handle_->get().set_value((double)sequence);
 
     if(!success){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to set command interfaces.");
@@ -215,92 +219,88 @@ void ServoController::send_command(const rclcpp::Time &time){
         auto result = std::make_shared<ServoAction::Result>();
         result->result = ServoAction::Goal::ERROR;
         command.goal_handle->abort(result);
+        command_busy_.store(false);
 
         return;
     }
 
-    // Since active_commands_ is preallocated in on_configure this is RT safe.
-    active_commands_.push_back(std::move(command));
+    current_active_command_ = std::move(command);
 }
 
 void ServoController::check_active_servos(const rclcpp::Time &time){
-    for(auto cmd_it = active_commands_.begin(); cmd_it != active_commands_.end();){
-        auto &command = *cmd_it;
-        bool all_finished = true;
+    // If there is no active command currently, skip this.
+    if(!current_active_command_) return;
 
-        uint64_t elapsed_ns = time.nanoseconds() - command.start_time_ns;
+    ActiveCommand &command = *current_active_command_;
+    
+    uint64_t elapsed_ns = time.nanoseconds() - command.start_time_ns;
 
-        if(elapsed_ns > command.timeout_ns){
-            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo command timeout!");
+    if(elapsed_ns > command.timeout_ns){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo command timeout!");
+
+        auto result = std::make_shared<ServoAction::Result>();
+        result->result = ServoAction::Goal::TIMEOUT;
+        command.goal_handle->abort(result);
+
+        current_active_command_.reset();
+        command_busy_.store(false);
+        return;
+    }
+
+    bool all_finished = true;
+    for(const ServoTarget &motor : command.targets){
+        Joint &joint = joints_[motor.index];
+
+        // This is also done to satisfy ros2 colcon build.
+        std::optional<double> position_opt = joint.position_handle->get().get_optional();
+        std::optional<double> velocity_opt = joint.speed_handle->get().get_optional();
+        std::optional<double> moving_opt = joint.status_handle->get().get_optional();
+        std::optional<double> current_opt = joint.current_handle->get().get_optional();
+
+        if(!velocity_opt || !position_opt || !moving_opt || !current_opt){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to parse read from %s servo!", motor.name.c_str());
+            all_finished = false;
+            break;
+        }
+
+        double velocity = *velocity_opt;
+        double position = *position_opt;
+        double moving = *moving_opt;
+        double current = *current_opt;
+
+        if(std::abs(current) > max_current_){
+            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo %s, current error! Reading: %lf mA", joint.name.c_str(), current);
 
             auto result = std::make_shared<ServoAction::Result>();
-            result->result = ServoAction::Goal::TIMEOUT;
+            result->result = ServoAction::Goal::CURRENT;
             command.goal_handle->abort(result);
 
-            command.active = false;
-            cmd_it = active_commands_.erase(cmd_it);
-            continue;
+            current_active_command_.reset();
+            command_busy_.store(false);
+            return;
         }
 
-        for(const auto &motor : command.targets){
-            auto it = std::find_if(joints_.begin(), joints_.end(), [&](const Joint &joint){
-                return joint.name == motor.name;
-            });
-
-            auto &joint = *it;
-
-            // This is also done to satisfy ros2 colcon build.
-            auto position_opt = joint.position_handle->get().get_optional();
-            auto velocity_opt = joint.speed_handle->get().get_optional();
-            auto moving_opt = joint.status_handle->get().get_optional();
-            auto current_opt = joint.current_handle->get().get_optional();
-
-            if(!velocity_opt || !position_opt || !moving_opt || !current_opt){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to parse read from %s servo!", motor.name.c_str());
+        if(joint.mode == ControlMode::POSITION){
+            if(moving != 0.0 || std::abs(position - motor.position) > tolerance_){
                 all_finished = false;
-                break;
             }
 
-            double velocity = *velocity_opt;
-            double position = *position_opt;
-            double moving = *moving_opt;
-            double current = *current_opt;
-
-            if(std::abs(current) > max_current_){
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Servo %s, current error! Reading: %lf mA", joint.name.c_str(), current);
-                command.active = false;
-
-                auto result = std::make_shared<ServoAction::Result>();
-                result->result = ServoAction::Goal::CURRENT;
-                command.goal_handle->abort(result);
-                break;
-            }
-
-            if(joint.mode == ControlMode::POSITION){
-                if(moving != 0.0 || std::abs(position - motor.position) > tolerance_){
-                    all_finished = false;
-                }
-
-            }else if(joint.mode == ControlMode::VELOCITY){
-                if(std::abs(velocity - motor.velocity) > velocity_tolerance_){
-                    all_finished = false;
-                }
+        }else if(joint.mode == ControlMode::VELOCITY){
+            if(std::abs(velocity - motor.velocity) > velocity_tolerance_){
+                all_finished = false;
             }
         }
-        
-
-        if(command.active && all_finished){
-            command.active = false;
-            auto result = std::make_shared<ServoAction::Result>();
-            result->result = ServoAction::Goal::SUCCESS;
-            command.goal_handle->succeed(result);
-        }
-
-        if(!command.active) 
-            cmd_it = active_commands_.erase(cmd_it);
-        else 
-            cmd_it++; 
     }
+    
+
+    if(all_finished){
+        auto result = std::make_shared<ServoAction::Result>();
+        result->result = ServoAction::Goal::SUCCESS;
+        command.goal_handle->succeed(result);
+
+        current_active_command_.reset();
+        command_busy_.store(false);
+    } 
 }
 
 
@@ -342,6 +342,12 @@ rclcpp_action::GoalResponse ServoController::handle_goal(const rclcpp_action::Go
         return rclcpp_action::GoalResponse::REJECT;
     }
 
+    bool expected = false;
+    if(!command_busy_.compare_exchange_strong(expected, true)){
+        RCLCPP_WARN(rclcpp::get_logger(LOGGER), "Goal rejected. A servo command is already in progress.");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
@@ -352,10 +358,9 @@ rclcpp_action::CancelResponse ServoController::handle_cancel(const std::shared_p
 
 void ServoController::handle_accepted(const std::shared_ptr<GoalHandle> goal_handle){
     const auto goal = goal_handle->get_goal();
-    // const auto goal_id = goal_handle->get_goal_id();
 
     ActiveCommand command;
-    // command.goal_id = goal_id;
+    
     command.goal_handle = goal_handle;
     command.sync_write = goal->sync_write;
     command.timeout_ns = static_cast<uint64_t>(goal->timeout_ms) * 1000000ULL;
@@ -364,6 +369,13 @@ void ServoController::handle_accepted(const std::shared_ptr<GoalHandle> goal_han
 
     for(size_t i = 0; i < goal->names.size(); i++){
         ServoTarget s;
+
+        for(size_t j = 0; j < joints_.size(); j++){
+            if(joints_[j].name == goal->names[i]){
+                s.index = j;
+            }
+        }
+
         s.name = goal->names[i];
         s.position = goal->positions[i];
         s.velocity = goal->velocities[i];
@@ -371,17 +383,9 @@ void ServoController::handle_accepted(const std::shared_ptr<GoalHandle> goal_han
         command.targets.push_back(s);
     }
 
-    // TODO: change this when RT structure for pending_commands_ is found.
-    std::unique_lock<std::mutex> ul(command_mutex_);
-    pending_commands_.push_back(std::move(command));
-
+    std::lock_guard<std::mutex> lock(command_mutex_);
+    current_pending_command_ = std::move(command);
 }
-
-void ServoController::process_action_results(){
-    // This will be used if there is ever a need for RT safe action response.
-    return;
-}
-
 
 }   // namespace zemo_controllers
 

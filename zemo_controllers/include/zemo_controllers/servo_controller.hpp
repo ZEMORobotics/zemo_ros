@@ -27,22 +27,22 @@ enum class ControlMode : uint8_t{
 };
 
 struct ServoTarget{
-    std::string name;
-
     double position;
     double velocity;
     double acceleration;
+    size_t index;
+
+    std::string name;
 };
 
 struct ActiveCommand{
-    bool active{false};
-
     uint64_t start_time_ns;
     uint64_t timeout_ns{2000000000ULL}; // ns
 
-    bool sync_write{false};
     std::vector<ServoTarget> targets;   // Servos that are executing action goal
     std::shared_ptr<GoalHandle> goal_handle;
+
+    bool sync_write{false};
 };
 
 
@@ -89,16 +89,15 @@ private:
     // Parsed data from .yaml
     std::vector<Joint> joints_;
 
-    // Action server variables
-    std::deque<ActiveCommand> pending_commands_;
-    std::vector<ActiveCommand> active_commands_;
-
+    // The current active command.
+    std::optional<ActiveCommand> current_pending_command_;
+    std::optional<ActiveCommand> current_active_command_;
+    
     std::mutex command_mutex_;
+    std::atomic<bool> command_busy_{false};
     uint64_t next_sequence_{1};
 
-    // Action server shenanigans
     rclcpp_action::Server<ServoAction>::SharedPtr action_server_;
-    // rclcpp::TimerBase::SharedPtr action_timer_;
 
     command_interface_t write_type_command_handle_;
     command_interface_t sequence_command_handle_; 
@@ -107,9 +106,7 @@ private:
 private:
     rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID& uuid, std::shared_ptr<const ServoAction::Goal> goal);
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandle> goal_handle);
-
     void handle_accepted(const std::shared_ptr<GoalHandle> goal_handle);
-    void process_action_results();
 
     void send_command(const rclcpp::Time &time);
     void check_active_servos(const rclcpp::Time &time);
