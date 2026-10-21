@@ -74,6 +74,13 @@ def generate_launch_description():
                 parameters=[configured_params],
             ),
 
+            ComposableNode(
+            package="zemo_navigation",
+            plugin="zemo_navigation::CollisionDetector",
+            name="collision_detector",
+            parameters=[configured_params],
+),
+
             #ComposableNode(
             #    package="nav2_map_server",
             #    plugin="nav2_map_server::MapServer",
@@ -99,6 +106,7 @@ def generate_launch_description():
                             "controller_server",
                             "planner_server",
                             "behavior_server",
+                            "collision_detector",
                         ],
                     }
                 ],

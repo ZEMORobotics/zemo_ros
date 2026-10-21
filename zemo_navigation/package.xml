@@ -18,6 +18,7 @@
   <depend>nav2_planner</depend>
   <depend>nav2_behaviors</depend>
   <depend>nav2_map_server</depend>
+  <depend>nav2_collision_monitor</depend>
   <depend>nav2_lifecycle_manager</depend>
   <depend>nav2_common</depend>
   <depend>tf2</depend>
@@ -28,6 +29,8 @@
   <depend>zemo_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>nav2_msgs</depend>
 
   <exec_depend>ros2launch</exec_depend>
 

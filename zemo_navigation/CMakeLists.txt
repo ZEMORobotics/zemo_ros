@@ -12,15 +12,25 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_util REQUIRED)
+find_package(nav2_collision_monitor REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(zemo_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(ruckig REQUIRED)
 
+
+set(detector_executable_name zemo_collision_detector)
+set(detector_library_name ${detector_executable_name}_core)
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
+
+
+# move
 add_library(move SHARED src/move.cpp)
 
 target_include_directories(move PRIVATE
@@ -51,6 +61,7 @@ rclcpp_components_register_node(
   EXECUTABLE move_server
 )
 
+# additional obstacle plugin
 add_library(additional_obstacle_layer SHARED
   src/AdditionalObstacleLayer.cpp)
 
@@ -81,11 +92,85 @@ install(
   RUNTIME DESTINATION bin
 )
 
+# collison
+add_executable(collison src/Collison.cpp)
+ament_target_dependencies(collison 
+  rclcpp
+  nav2_costmap_2d
+  tf2
+  nav2_util
+  std_msgs)
+
+
+install(TARGETS
+  collison
+  DESTINATION lib/${PROJECT_NAME})
+
+
+# collison detector
+add_library(${detector_library_name} SHARED
+  src/collision_detector/collision_detector.cpp
+  src/collision_detector/dynamic_polygon.cpp
+)
+
+add_executable(${detector_executable_name}
+  src/collision_detector/collision_detector_main.cpp
+)
+
+set_target_properties(${detector_executable_name} PROPERTIES
+  BUILD_RPATH "${CMAKE_CURRENT_BINARY_DIR}"
+  INSTALL_RPATH "$ORIGIN/../../.."
+)
+
+target_include_directories(${detector_library_name} PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_include_directories(${detector_executable_name} PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(${detector_library_name}
+  rclcpp
+  rclcpp_components
+  sensor_msgs
+  geometry_msgs
+  std_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  nav2_util
+  nav2_costmap_2d
+  nav2_collision_monitor
+  nav2_msgs
+  visualization_msgs
+)
+
+target_link_libraries(${detector_executable_name}
+  ${detector_library_name}
+)
+
+ament_target_dependencies(${detector_executable_name}
+  rclcpp
+)
+
+rclcpp_components_register_nodes(${detector_library_name} "zemo_navigation::CollisionDetector")
+
+install(TARGETS ${detector_library_name}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(TARGETS ${detector_executable_name}
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files.
 install(DIRECTORY
   launch
   config
-  map
   DESTINATION share/${PROJECT_NAME}/
 )
 
