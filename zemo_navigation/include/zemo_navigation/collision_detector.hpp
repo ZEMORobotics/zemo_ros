@@ -1,0 +1,160 @@
+#ifndef NAV2_COLLISION_MONITOR__COLLISION_DETECTOR_NODE_HPP_
+#define NAV2_COLLISION_MONITOR__COLLISION_DETECTOR_NODE_HPP_
+
+#include <string>
+#include <vector>
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
+
+#include "tf2/time.h"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
+
+#include "nav2_util/lifecycle_node.hpp"
+#include "nav2_msgs/msg/collision_detector_state.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+
+#include "nav2_collision_monitor/types.hpp"
+#include "nav2_collision_monitor/polygon.hpp"
+#include "nav2_collision_monitor/circle.hpp"
+#include "nav2_collision_monitor/velocity_polygon.hpp"
+#include "nav2_collision_monitor/source.hpp"
+#include "nav2_collision_monitor/scan.hpp"
+#include "nav2_collision_monitor/pointcloud.hpp"
+#include "nav2_collision_monitor/range.hpp"
+#include "nav2_collision_monitor/polygon_source.hpp"
+
+// ZEMO addition
+#include "zemo_navigation/dynamic_polygon.hpp"
+#include <unordered_map>
+
+/**
+ * This code is directly taken from nav2 monitor detection
+ */
+
+namespace zemo_navigation
+{
+/**
+ * @brief Collision Monitor ROS2 node
+ */
+class CollisionDetector : public nav2_util::LifecycleNode
+{
+public:
+  /**
+   * @brief Constructor for the nav2_collision_monitor::CollisionDetector
+   * @param options Additional options to control creation of the node.
+   */
+  explicit CollisionDetector(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  /**
+   * @brief Destructor for the nav2_collision_monitor::CollisionDetector
+   */
+  ~CollisionDetector();
+
+protected:
+  /**
+   * @brief: Initializes and obtains ROS-parameters, creates main subscribers and publishers,
+   * creates polygons and data sources objects
+   * @param state Lifecycle Node's state
+   * @return Success or Failure
+   */
+  nav2_util::CallbackReturn on_configure(const rclcpp_lifecycle::State & state) override;
+  /**
+   * @brief: Activates LifecyclePublishers, polygons and main processor, creates bond connection
+   * @param state Lifecycle Node's state
+   * @return Success or Failure
+   */
+  nav2_util::CallbackReturn on_activate(const rclcpp_lifecycle::State & state) override;
+  /**
+   * @brief: Deactivates LifecyclePublishers, polygons and main processor, destroys bond connection
+   * @param state Lifecycle Node's state
+   * @return Success or Failure
+   */
+  nav2_util::CallbackReturn on_deactivate(const rclcpp_lifecycle::State & state) override;
+  /**
+   * @brief: Resets all subscribers/publishers, polygons/data sources arrays
+   * @param state Lifecycle Node's state
+   * @return Success or Failure
+   */
+  nav2_util::CallbackReturn on_cleanup(const rclcpp_lifecycle::State & state) override;
+  /**
+   * @brief Called in shutdown state
+   * @param state Lifecycle Node's state
+   * @return Success or Failure
+   */
+  nav2_util::CallbackReturn on_shutdown(const rclcpp_lifecycle::State & state) override;
+
+protected:
+  /**
+   * @brief Supporting routine obtaining all ROS-parameters
+   * @return True if all parameters were obtained or false in failure case
+   */
+  bool getParameters();
+  /**
+   * @brief Supporting routine creating and configuring all polygons
+   * @param base_frame_id Robot base frame ID
+   * @param transform_tolerance Transform tolerance
+   * @return True if all polygons were configured successfully or false in failure case
+   */
+  bool configurePolygons(
+    const std::string & base_frame_id,
+    const tf2::Duration & transform_tolerance);
+  /**
+   * @brief Supporting routine creating and configuring all data sources
+   * @param base_frame_id Robot base frame ID
+   * @param odom_frame_id Odometry frame ID. Used as global frame to get
+   * source->base time interpolated transform.
+   * @param transform_tolerance Transform tolerance
+   * @param source_timeout Maximum time interval in which data is considered valid
+   * @param base_shift_correction Whether to correct source data towards to base frame movement,
+   * considering the difference between current time and latest source time
+   * @return True if all sources were configured successfully or false in failure case
+   */
+  bool configureSources(
+    const std::string & base_frame_id,
+    const std::string & odom_frame_id,
+    const tf2::Duration & transform_tolerance,
+    const rclcpp::Duration & source_timeout,
+    const bool base_shift_correction);
+
+  /**
+   * @brief Main processing routine
+   */
+  void process();
+
+  /**
+   * @brief Polygons publishing routine. Made for visualization.
+   */
+  void publishPolygons() const;
+
+  // ----- Variables -----
+
+  /// @brief TF buffer
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  /// @brief TF listener
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+  /// @brief Polygons array
+  std::vector<std::shared_ptr<nav2_collision_monitor::Polygon>> polygons_;
+  /// @brief Data sources array
+  std::vector<std::shared_ptr<nav2_collision_monitor::Source>> sources_;
+
+  /// @brief collision monitor state publisher
+  rclcpp_lifecycle::LifecyclePublisher<nav2_msgs::msg::CollisionDetectorState>::SharedPtr
+    state_pub_;
+  /// @brief Collision points marker publisher
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    collision_points_marker_pub_;
+  /// @brief timer that runs actions
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  /// @brief main loop frequency
+  double frequency_;
+
+  // zemo additional code 
+  std::shared_ptr<std::unordered_map<std::string, bool>> default_detetions_;
+};  // class CollisionDetector
+
+} // namespace zemo_navigation
+
+#endif  // NAV2_COLLISION_MONITOR__COLLISION_DETECTOR_NODE_HPP_
