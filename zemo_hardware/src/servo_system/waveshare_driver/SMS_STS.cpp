@@ -60,9 +60,9 @@ SMS_STS::SMS_STS(u8 End, u8 Level) : SCSerial(End, Level) {}
  * Negative positions are converted to absolute value with direction bit set.
  *
  * @param ID Servo ID
- * @param Position Target position (0-4095 steps)
- * @param Speed Moving speed (0-3400 steps/s)
- * @param ACC Acceleration value (0-254)
+ * @param Position Target position (0-4095, 0.087 degree per unit)
+ * @param Speed Max moving speed (0 - 32767, 0.732 RPM per unit) For CF 45RPM max is equal to 61 written here
+ * @param ACC Acceleration value (0-254, 8.7 degree/s^2 per unit)
  * @return 1 on success, 0 on failure
  */
 int SMS_STS::WritePosEx(u8 ID, s16 Position, u16 Speed, u8 ACC)
@@ -369,7 +369,6 @@ void SMS_STS::SyncWritePwm(u8 ID[], u8 IDN, s16 Pwm[])
 /**
  * @brief Enable or disable servo motor torque
  *
- * Controls whether servo actively maintains position or is free-moving.
  *
  * @param ID Servo ID
  * @param Enable 1 to enable torque, 0 to disable (free-moving)
@@ -396,7 +395,6 @@ int SMS_STS::unLockEeprom(u8 ID)
 /**
  * @brief Lock EEPROM to prevent accidental changes
  *
- * Protects EEPROM parameters from modification.
  *
  * @param ID Servo ID
  * @return 1 on success, 0 on failure
@@ -504,7 +502,7 @@ int SMS_STS::CalibrationOfs(u8 ID)
  * @brief Read all feedback data from servo into memory buffer
  *
  * Reads position, speed, load, voltage, temperature, movement status, and current.
- * Data is stored in Mem[] array and can be accessed via ReadPos(), ReadSpeed(), etc.
+ * Data is stored in Mem[] array and can be accessed via ReadPos(-1), ReadSpeed(-1), etc.
  *
  * @param ID Servo ID
  * @return 1 on success, 0 on failure
@@ -652,7 +650,7 @@ int SMS_STS::ReadMove(int ID)
  * Reads motor current from servo or from cached buffer.
  *
  * @param ID Servo ID, or -1 to read from cached buffer
- * @return Current value in mA, -1 on error
+ * @return Current value in 6,5 mA, -1 on error
  */
 int SMS_STS::ReadCurrent(int ID)
 {

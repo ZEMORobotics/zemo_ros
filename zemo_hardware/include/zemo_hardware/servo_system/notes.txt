@@ -1,0 +1,67 @@
+Svi Waveshare_driver fajlovi su preuzite online ali su napisane od strane claud-a i iz
+toga proazilazi dosta problema i nejasnoca.
+
+---
+
+Nejasnoca 1:
+
+Ovi komentari u vecini funkcija su potpuno netacni:
+
+/**
+ * @brief Write position, speed, and acceleration to servo (extended command)
+ *
+ * Sends single-servo position command with acceleration and speed control.
+ * Negative positions are converted to absolute value with direction bit set.
+ *
+ * @param ID Servo ID
+ * @param Position Target position (0-4095 steps)
+ * @param Speed Moving speed (0-3400 steps/s)
+ * @param ACC Acceleration value (0-254)
+ * @return 1 on success, 0 on failure
+ */
+
+
+ Ovde dokumentacija navodi 0-4095 steps za poziciju, 0-3400 steps/s za brzinu
+ i 0-254 za ubrzanje, medjutim nista od ovoga nije tacno.
+
+
+ Ovde se mora razdvojiti sta je REALAN maximum i sta je registracioni maximum.
+
+ Registri za target position, i mooving speed (max speed u dokumentaciji) su 16bita.
+ Registar za ubrzanje je 8bita.
+
+ Samim tim maximalne vrednosti za poziciju i brzinu nisu ove navedene vec int16 maximum sto je:
+    +32767
+i biblioteka ne sprecava korisnika da stavi tu vrednost.
+
+
+
+Najveca nejasnoca bibloteke je merna jedinica koja navodi steps i steps/s sto je potpuno netacno.
+
+Jedinica za poziciju je 0.08789 stepeni.
+Jedinica za brzinu je 0.732 RPM.
+
+Biblioteka 0.08789 navodi kao jedan step. Znaci maximum od 4095 je priblizno 360 stepeni. To je okej.
+
+Brzina po koracima u sekundi je: 0.732 * 360 /60 = 4.392 koraka u sekundi. a ne step/s.
+
+Sto znaci da ova biblioteka ne pravi nikakvu konverziju i daje lazne informacije za brzinu sto je sjebalo kod.
+NIKAD NE KORISTI CLAUD ZA HARDWARE STVARI.
+
+
+Dakle:
+
+Ekstremi vrednosti za position i velociti po REGISTRU su int16 min i int16 max (-32767 do +32767).
+Ekstrem za ubrzanje je int8 min i max PO REGISTRU.
+
+A smislene realne vrednosti:
+
+Za ST motore koji nemaju multiturn:
+0 - 4095 za poziciju,
+0 - 61 za brzinu (45 RPM je maks bez opterecenja).
+
+Za CF motore koji imaju multiturn:
+0 - 32767 za poziciju,
+0 - 61 za brzinu (45 RPM je maks bez opterecenja).
+
+Ubrzanje je isto za oba i jedna jedinica je 8.7 stepeni po s^2.

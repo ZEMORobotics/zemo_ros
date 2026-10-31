@@ -28,6 +28,7 @@
 #define CF_RESPONSE_STATUS_LEVEL 8
 #define CF_MIN_ANGLE_LIMIT_L 9
 #define CF_MIN_ANGLE_LIMIT_H 10
+
 #define CF_MAX_ANGLE_LIMIT_L 11
 #define CF_MAX_ANGLE_LIMIT_H 12
 #define CF_MAX_TEMPERATURE_LIMIT 13
@@ -61,11 +62,11 @@
 //-------SRAM (Read and Write)--------
 #define CF_TORQUE_ENABLE 40
 #define CF_ACC 41
-#define CF_GOAL_POSITION_L 42   // min -32767 max 32767
+#define CF_GOAL_POSITION_L 42   // min -32767 max +32767
 #define CF_GOAL_POSITION_H 43
 #define CF_GOAL_CURRENT_L 44
 #define CF_GOAL_CURRENT_H 45
-#define CF_GOAL_SPEED_L 46
+#define CF_GOAL_SPEED_L 46	// min -32767 max +32767
 #define CF_GOAL_SPEED_H 47
 #define CF_TORQUE_LIMIT_L 48
 #define CF_TORQUE_LIMIT_H 49
@@ -74,18 +75,7 @@
 #define CF_KI 52
 // #define CF_UNDEFINED 53 54
 #define CF_LOCK 55
-
-//-------Undocumented extended registers--------
-// ST is known for this, however i don't see the use case for CF,
-// TODO: Check if relevant
-
-// #define CF_MOVING_THRESHOLD 80 
-// #define CF_DTS 81              
-// #define CF_VK_MS 82
-// #define CF_VMIN 83             
-// #define CF_VMAX 84             
-// #define CF_AMAX 85             
-// #define CF_KACC 86             
+          
 
 //-------SRAM (Read only)--------
 #define CF_PRESENT_POSITION_L 56
@@ -110,7 +100,7 @@
 
 #define CF_DIRECTION_BIT_POS 15      // Bit position for direction flag in position/speed
 #define CF_LOAD_DIRECTION_BIT_POS 10 // Bit position for direction flag in load/PWM
-// #define CF_PHASE_FULL_ANGLE_FEEDBACK_MASK (1u << 4)		TODO: Check if actually needed for multiturn mode
+#define CF_PHASE_FULL_ANGLE_FEEDBACK_MASK (1u << 4)
 
 
 #define CF_MODE_SERVO 0        // Servo mode (position control)
@@ -121,6 +111,7 @@
 // Special servo IDs
 #define CF_BROADCAST_ID 0xFE // Broadcast ID for all servos
 
+#define CF_DEFAULT_MAX_CURRENT 2047
 // #define CF_CALIBRATION_CMD 128
 
 #include "INST.h"
@@ -178,42 +169,30 @@ public:
 	 *  @note LSP compliant - available on all servo classes */
 	virtual int InitMotor(u8 ID, u8 mode, u8 enableTorque = 1);
 
-	/** @brief Write speed to single servo (Mode 1)
-	 *  @param ID Servo ID
-	 *  @param Speed Target speed (-3400 to +3400 steps/s)
-	 *  @param ACC Acceleration
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteSpe(u8 ID, s16 Speed, u8 ACC = 0);
+	// /** @brief Write speed to single servo (Mode 1)
+	//  *  @param ID Servo ID
+	//  *  @param Speed Target speed (-3400 to +3400 steps/s)
+	//  *  @param ACC Acceleration
+	//  *  @return 1 on success, 0 on failure */
+	// virtual int WriteSpe(u8 ID, s16 Speed, u8 ACC = 0);
 
-	/** @brief Async write speed */
-	virtual int RegWriteSpe(u8 ID, s16 Speed, u8 ACC = 0);
+	// /** @brief Async write speed */
+	// virtual int RegWriteSpe(u8 ID, s16 Speed, u8 ACC = 0);
 
-	/** @brief Sync write speed and acceleration to multiple servos (atomic)
-	 *
-	 *  Sends ACC + GOAL_SPEED to all servos in a single 7-byte sync-write
-	 *  packet starting from SMS_STS_ACC (reg 41).  Writing both values in
-	 *  one atomic bus transaction ensures per-servo acceleration profiles
-	 *  are applied together with their speed commands, which is essential
-	 *  for synchronised multi-motor systems (e.g. omni-wheel robots).
-	 *
-	 *  @param ID    Array of servo IDs
-	 *  @param IDN   Number of servos
-	 *  @param Speed Array of target speeds (steps/s; negative = reverse)
-	 *  @param ACC   Array of accelerations (0-254, units of 100 steps/s²),
-	 *               or NULL to use ACC=0 for all servos (max slew rate) */
-	virtual void SyncWriteSpe(u8 ID[], u8 IDN, s16 Speed[], u8 ACC[]);
-
-	/** @brief Write PWM to single servo (Mode 2)
-	 *  @param ID Servo ID
-	 *  @param Pwm PWM duty cycle (±1000 = ±100%)
-	 *  @return 1 on success, 0 on failure */
-	virtual int WritePwm(u8 ID, s16 Pwm);
-
-	/** @brief Async write PWM */
-	virtual int RegWritePwm(u8 ID, s16 Pwm);
-
-	/** @brief Sync write PWM to multiple servos */
-	virtual void SyncWritePwm(u8 ID[], u8 IDN, s16 Pwm[]);
+	// /** @brief Sync write speed and acceleration to multiple servos (atomic)
+	//  *
+	//  *  Sends ACC + GOAL_SPEED to all servos in a single 7-byte sync-write
+	//  *  packet starting from SMS_STS_ACC (reg 41).  Writing both values in
+	//  *  one atomic bus transaction ensures per-servo acceleration profiles
+	//  *  are applied together with their speed commands, which is essential
+	//  *  for synchronised multi-motor systems (e.g. omni-wheel robots).
+	//  *
+	//  *  @param ID    Array of servo IDs
+	//  *  @param IDN   Number of servos
+	//  *  @param Speed Array of target speeds (steps/s; negative = reverse)
+	//  *  @param ACC   Array of accelerations (0-254, units of 100 steps/s²),
+	//  *               or NULL to use ACC=0 for all servos (max slew rate) */
+	// virtual void SyncWriteSpe(u8 ID[], u8 IDN, s16 Speed[], u8 ACC[]);
 
 	/** @brief Enable/disable motor torque
 	 *  @param ID Servo ID
@@ -241,89 +220,6 @@ public:
 	 *  @param ID Servo ID
 	 *  @return Register value on success, -1 on failure */
 	virtual int ReadAcc(int ID);
-
-	/** @brief Set internal velocity cap register (addr 84)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteVMax(u8 ID, u8 value);
-
-	/** @brief Read internal velocity cap register (addr 84)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadVMax(int ID);
-
-	/** @brief Set internal acceleration cap register (addr 85)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteAMax(u8 ID, u8 value);
-
-	/** @brief Read internal acceleration cap register (addr 85)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadAMax(int ID);
-
-	/** @brief Set internal acceleration profile coefficient register (addr 86)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteKAcc(u8 ID, u8 value);
-
-	/** @brief Read internal acceleration profile coefficient register (addr 86)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadKAcc(int ID);
-
-	/** @brief Set internal control-loop period register (addr 81)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteDTS(u8 ID, u8 value);
-
-	/** @brief Read internal control-loop period register (addr 81)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadDTS(int ID);
-
-	/** @brief Set internal moving-state detection threshold register (addr 80)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteMovingThreshold(u8 ID, u8 value);
-
-	/** @brief Read internal moving-state detection threshold register (addr 80)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadMovingThreshold(int ID);
-
-	/** @brief Set internal velocity-profile/settling tuning register, "Vk(ms)" (addr 82)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteVkMs(u8 ID, u8 value);
-
-	/** @brief Read internal velocity-profile/settling tuning register, "Vk(ms)" (addr 82)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadVkMs(int ID);
-
-	/** @brief Set internal minimum-speed / low-speed gating threshold register (addr 83)
-	 *  @param ID Servo ID
-	 *  @param value Register value
-	 *  @return 1 on success, 0 on failure */
-	virtual int WriteVMin(u8 ID, u8 value);
-
-	/** @brief Read internal minimum-speed / low-speed gating threshold register (addr 83)
-	 *  @param ID Servo ID
-	 *  @return Register value on success, -1 on failure */
-	virtual int ReadVMin(int ID);
-
-	/** @brief Calibrate servo midpoint position
-	 *  @param ID Servo ID
-	 *  @return 1 on success, 0 on failure
-	 *  @note Sets offset register to 128 (different from InitMotor which sets operating mode) */
-	virtual int CalibrationOfs(u8 ID);
 
 	/** @brief Read all feedback data into internal buffer
 	 *  @param ID Servo ID
