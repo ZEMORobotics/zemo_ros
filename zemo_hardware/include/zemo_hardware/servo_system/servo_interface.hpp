@@ -1,6 +1,6 @@
 #pragma once
 
-#include "zemo_hardware/servo_system/waveshare_driver/SMS_STS.h"
+#include "zemo_hardware/servo_system/servo_protocols.hpp"
 
 #include <hardware_interface/handle.hpp>
 #include <hardware_interface/system_interface.hpp>
@@ -10,32 +10,12 @@
 
 #include <string>
 #include <vector>
-#include <variant> // fancy c++ union
-#include <unordered_map>
+#include <optional>
 
 namespace zemo_hardware{
 
 using command_interface_t = hardware_interface::CommandInterface::SharedPtr;
 using state_interface_t = hardware_interface::StateInterface::SharedPtr;
-
-enum class ProtocolType{
-    SMS_STS, HLSCL, SCS0009, SCSCL
-};
-
-// This allows for typos when writing protocol type in urdf
-static std::unordered_map<std::string, ProtocolType> allowed_protocols{
-    {"sms_sts", ProtocolType::SMS_STS}, {"sts_sms", ProtocolType::SMS_STS},
-    {"alibabaisedampatuljaka", ProtocolType::SMS_STS}, {"sms", ProtocolType::SMS_STS},
-    {"sts", ProtocolType::SMS_STS}, {"st3215", ProtocolType::SMS_STS}
-};
-
-// Fancy c++ union. This means that before runtime we don't know the protocol, therefore don't know
-// the type being used by the servo driver. So we apply a pattern with union that will allow us
-// to assign the type of driver_ in runtime.
-// Strongly recommend to read docs on std::variant.
-using ServoDriver = std::variant<SMS_STS, HLSCL, SCS0009, SCSCL>;
-enum ControlMode : uint8_t {POSITION=0, VELOCITY=1};
-
 
 struct Joint{
     Joint(){};
@@ -68,22 +48,41 @@ public:
     
     hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
     hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+
 private:
     static constexpr const char* LOGGER = "zemo_hardware_servo";
-    static constexpr const int32_t retry_count_ = 10;
+    static constexpr const int_fast8_t retry_count_ = 10;
 
     ServoDriver driver_;
 
     std::string port_{"/dev/ttyAMA0"};
-    ProtocolType protocol_{ProtocolType::SMS_STS};
+    std::optional<ProtocolType> protocol_{ProtocolType::SMS_STS};
     uint8_t tx_enable_pin_{23};
     uint8_t rx_enable_pin_{24};
     uint32_t baudrate_{115200};
 
+    // This variable is used for async write to the motors.
+    // It is very important that it is initialized at 0;
+    uint64_t current_sequence_{0};
+
     std::vector<Joint> joint_list_;
+    std::vector<Joint*> active_joints_;
+    
+    // For sync write
+    std::vector<uint8_t> ids_;
+    std::vector<int16_t> positions_;
+    std::vector<uint16_t> max_speeds_;
+    std::vector<int16_t> velocities_;
+    std::vector<uint8_t> accelerations_;
 
     command_interface_t write_type_cmd_;
     command_interface_t sequence_cmd_;
+
+// Functions
+private:
+    bool send_single(Joint& joint);
+    bool parse_parallel_commands(Joint& joint);
+    inline void clear_command_buffers();
 };
 
 } // namespace zemo_hardware

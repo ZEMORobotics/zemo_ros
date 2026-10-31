@@ -29,9 +29,9 @@ def launch_setup(context, *args, **kwargs):
     log_level = "warn"  # info or warn or error or debug or fatal
     output_screen = "screen" # screen or log or both
 
-    lidar_usb_port = "nesto"
+    lidar_usb_port = "/dev/ttyUSB0"
 
-    check_can_interface()
+    #check_can_interface()
 
     controller_config = os.path.join(
         get_package_share_directory('zemo_hardware'),
@@ -90,11 +90,11 @@ def launch_setup(context, *args, **kwargs):
     )
 
     return [
-        controller_manager,
-        joint_state_broadcaster_spawner,
-        diff_drive_controller_spawner,
+        #controller_manager,
+        #joint_state_broadcaster_spawner,
+        #diff_drive_controller_spawner,
 
-        #lidar,
+        lidar,
     ]
 
 

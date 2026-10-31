@@ -79,7 +79,7 @@ controller_interface::CallbackReturn ServoController::on_configure(const rclcpp_
     joints_.clear();
     size_t num_of_servos = position_joints_.size() + velocity_joints_.size();
 
-    joints_.reserve(num_of_servos*2);
+    joints_.reserve(num_of_servos);
     
     current_pending_command_.reset();
     current_active_command_.reset();
@@ -309,6 +309,11 @@ rclcpp_action::GoalResponse ServoController::handle_goal(const rclcpp_action::Go
 
     if(n == 0 || goal->positions.size() != n || goal->velocities.size() != n || goal->accelerations.size() != n){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Goal rejected. Positions, velocities and accelerations should be the same size.");
+        return rclcpp_action::GoalResponse::REJECT;
+    }
+
+    if(n > joints_.size()){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Goal rejected. Recieved more motors than the number of motors in parsed from .yaml.");
         return rclcpp_action::GoalResponse::REJECT;
     }
 

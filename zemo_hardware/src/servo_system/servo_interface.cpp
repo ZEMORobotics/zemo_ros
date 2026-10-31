@@ -14,19 +14,23 @@ hardware_interface::CallbackReturn ServoInterface::on_init(const hardware_interf
     tx_enable_pin_ = (uint8_t)std::stoul(hw_params.at("tx_en_pin"));
     rx_enable_pin_ = (uint8_t)std::stoul(hw_params.at("rx_en_pin"));
 
-    // This part of the code finds the protocol from the allowed list.
+    protocol_ = parse_protocol(protocol_type);
 
-    for(auto& x : protocol_type) x = tolower(x);   // c++ couldn't find a better way to make all characters lower case
-    auto it = allowed_protocols.find(protocol_type);
-
-    if(it == allowed_protocols.end()){
+    if(!protocol_){
         RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Invalid protocol type %s. Check servo_interface.hpp for valid options.", protocol_type.c_str());
         return CallbackReturn::ERROR;
     }
-    protocol_ = it->second;
 
     size_t number_of_joints = params.hardware_info.joints.size();
     joint_list_.resize(number_of_joints);
+    active_joints_.reserve(number_of_joints);
+    
+    current_sequence_ = 0;
+    ids_.reserve(number_of_joints);
+    positions_.reserve(number_of_joints);
+    max_speeds_.reserve(number_of_joints);
+    velocities_.reserve(number_of_joints);
+    accelerations_.reserve(number_of_joints);
 
     // Parse hardware info
     for(size_t i = 0; i < number_of_joints; i++){
@@ -36,7 +40,7 @@ hardware_interface::CallbackReturn ServoInterface::on_init(const hardware_interf
         auto id = std::stoul(joint_info.parameters.at("id"));
 
         joint_list_[i].name = joint_info.name;
-        joint_list_[i].id = (uint8_t)id;
+        joint_list_[i].id = static_cast<uint8_t>(id);
         joint_list_[i].mode = static_cast<ControlMode>(mode);
 
         // In most protocols 0xfe (254) is broadcast id, so we allow 253 and below.
@@ -46,15 +50,10 @@ hardware_interface::CallbackReturn ServoInterface::on_init(const hardware_interf
         }
     }
 
-    // Fancy union typization
-    switch(protocol_){
-        case ProtocolType::SMS_STS: driver_.emplace<SMS_STS>(); break;
-        case ProtocolType::HLSCL: driver_.emplace<HLSCL>(); break;
-        case ProtocolType::SCS0009: driver_.emplace<SCS0009>(); break;
-        case ProtocolType::SCSCL: driver_.emplace<SCSCL>(); break;
-        default:
-            RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Protocol is in allowed list, but it is not unionized %s", protocol_type.c_str());
-            return CallbackReturn::ERROR;
+    // Gives class type to the driver_ variable.
+    if(!make_driver(driver_, *protocol_)){
+        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Protocol is in allowed list, but it is not unionized %s", protocol_type.c_str());
+        return CallbackReturn::ERROR;
     }
 
     return CallbackReturn::SUCCESS;
@@ -79,12 +78,12 @@ hardware_interface::CallbackReturn ServoInterface::on_configure(const rclcpp_lif
         bool online = true;
         
         for(Joint& joint : joint_list_){
-            int32_t local_count = retry_count_;
+            int_fast8_t local_count = retry_count_;
 
             // PING the servo motor, with retry_count_ tries.
             while(local_count > 0){
                 if(driver.Ping(joint.id) == joint.id){
-                    RCLCPP_INFO(rclcpp::get_logger(LOGGER), "Servo with %s online", joint.name.c_str());
+                    RCLCPP_INFO(rclcpp::get_logger(LOGGER), "Servo %s online", joint.name.c_str());
                     break;
                 }
                 local_count--;
@@ -99,41 +98,22 @@ hardware_interface::CallbackReturn ServoInterface::on_configure(const rclcpp_lif
         return online;
     }, driver_);
 
-    if(!all_servos_online){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Could not see some servo motors with PING!");
-        return CallbackReturn::ERROR;
-    }
+    if(!all_servos_online) return CallbackReturn::ERROR;
 
-    bool motor_initialized = true;
-    if(std::holds_alternative<SMS_STS>(driver_)){
-        SMS_STS& driver = std::get<SMS_STS>(driver_);
-        
+    bool ok = std::visit([&](auto& driver)->bool{
+        bool success = true;
         for(Joint& joint : joint_list_){
-            if(driver.InitMotor(joint.id, joint.mode, 0) != 0){
+            if(init_motor(driver, joint.id, joint.mode)){
                 RCLCPP_INFO(rclcpp::get_logger(LOGGER), "Successfully initialized motor %s.", joint.name.c_str());
             }else{
-                motor_initialized = false;
+                success = false;
                 RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to initialize motor %s.", joint.name.c_str());
             }
         }
-    }else if(std::holds_alternative<HLSCL>(driver_)){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Motor initialization not implemented for HLSCL protocol.");
-        return CallbackReturn::ERROR;
-    }else if(std::holds_alternative<SCS0009>(driver_)){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Motor initialization not implemented for SCS0009 protocol.");
-        return CallbackReturn::ERROR;
-    }else if(std::holds_alternative<SCSCL>(driver_)){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Motor initialization not implemented for SCSCL protocol.");
-        return CallbackReturn::ERROR;
-    }else{
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Motor initialization not implemented for selected protocol.");
-        return CallbackReturn::ERROR;
-    }
+        return success;
+    }, driver_);
 
-    if(!motor_initialized){
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Could not initialize some servo motors!");
-        return CallbackReturn::ERROR;
-    }
+    if(!ok) return CallbackReturn::ERROR;
 
     return CallbackReturn::SUCCESS;
 }
@@ -149,36 +129,32 @@ hardware_interface::CallbackReturn ServoInterface::on_cleanup(const rclcpp_lifec
 }
 
 hardware_interface::CallbackReturn ServoInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/){
-    bool motor_torque = true;
     rclcpp::Logger status_logger = rclcpp::get_logger("zemo_hardware.servo_info");
-    rcutils_logging_set_logger_level(status_logger.get_name(), RCUTILS_LOG_SEVERITY_INFO);
+    rcutils_ret_t err = rcutils_logging_set_logger_level(status_logger.get_name(), RCUTILS_LOG_SEVERITY_INFO);
+    if(err != RCUTILS_RET_OK) RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to create seperate logger!");
 
-    if(std::holds_alternative<SMS_STS>(driver_)){
-        SMS_STS& driver = std::get<SMS_STS>(driver_);
-        for(auto& joint : joint_list_){
-            if(driver.EnableTorque(joint.id, 1) != 1){
-                motor_torque = false;
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to enable torque on motor %s.", joint.name.c_str());
+    bool ok = std::visit([&](auto& driver) -> bool{
+            bool success = true;
+            for(Joint& joint : joint_list_){
+                if(!torque(driver, joint.id, 1)){
+                    success = false;
+                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to enable torque on motor %s.", joint.name.c_str());
+                }
+
+                Status status{};
+                if(read_status(driver, joint.id, status)){
+                    RCLCPP_INFO(status_logger, "Servo %s online. VOLTAGE: %.1lf V, TEMPERATURE: %d C, CURRENT: %d mA", joint.name.c_str(), status.voltage, status.temperature, status.current);
+                }else{
+                    success = false;
+                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to read feedback from motor %s.", joint.name.c_str());
+                }
             }
+            return success;
+        }, 
+        driver_
+    );
 
-            if(driver.FeedBack(joint.id) == 1){
-                double voltage = driver.ReadVoltage(-1) / 10.0;
-                int temperature = driver.ReadTemper(-1);
-                int current = driver.ReadCurrent(-1);
-
-                RCLCPP_INFO(status_logger, "Servo %s online. VOLTAGE: %.1lf V, TEMPERATURE: %d C, CURRENT: %d mA", joint.name.c_str(), voltage, temperature, current);
-            }else{
-                motor_torque = false;
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to read feedback from motor %s.", joint.name.c_str());
-            }
-        }
-    }else{
-        RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to activate servo system: Protocol not implemented!");
-        return CallbackReturn::ERROR;
-    }
-
-    if(!motor_torque) 
-        return CallbackReturn::ERROR;
+    if(!ok)  return CallbackReturn::ERROR;
 
     for(auto& gpio : gpio_commands_){
         if(gpio->get_interface_name() == "write_type"){
@@ -258,31 +234,161 @@ hardware_interface::CallbackReturn ServoInterface::on_deactivate(const rclcpp_li
         joint.current_state.reset();
     }
 
-    bool motor_torque = true;
-
-    if(std::holds_alternative<SMS_STS>(driver_)){
-        SMS_STS& driver = std::get<SMS_STS>(driver_);
-        for(auto& joint : joint_list_){
-            if(driver.EnableTorque(joint.id, 0) != 1){
-                motor_torque = false;
-                RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to disable torque on motor %s.", joint.name.c_str());
+    bool ok = std::visit([&](auto& driver) -> bool{
+            bool success = true;
+            for(Joint& joint : joint_list_){
+                if(!torque(driver, joint.id, 1)){
+                    success = false;
+                    RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to disable torque on motor %s.", joint.name.c_str());
+                }
             }
-        }
-    }
+            return success;
+        }, 
+        driver_
+    );
 
-    if(!motor_torque) 
-        return CallbackReturn::ERROR;
+    if(!ok) return CallbackReturn::ERROR;
 
+    clear_command_buffers();
     return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::return_type ServoInterface::write(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/){
+    auto sequence_opt = sequence_cmd_->get_optional<double>();
+    if(!sequence_opt) return hardware_interface::return_type::OK;
+
+    uint64_t sequence = static_cast<uint64_t>(*sequence_opt);
+    if(sequence <= current_sequence_)    return hardware_interface::return_type::OK;
+
+    auto sync_write_opt = write_type_cmd_->get_optional<double>();
+    if(!sync_write_opt) return hardware_interface::return_type::OK;
+
+    bool sync_write = (*sync_write_opt != 0.0);
+
+    clear_command_buffers();
+
+    for(Joint& joint : joint_list_){
+        auto joint_sequence_opt = joint.joint_sequence_cmd->get_optional<double>();
+        if(!joint_sequence_opt) return hardware_interface::return_type::OK;
+
+        uint64_t joint_sequence = static_cast<uint64_t>(*joint_sequence_opt);
+
+        if(joint_sequence != sequence)
+            continue;
+
+        active_joints_.push_back(&joint);
+
+        if(sync_write){
+            parse_parallel_commands(joint);
+        }else{
+            if(!send_single(joint)) return hardware_interface::return_type::ERROR;
+            break;
+        }
+    }
+
+    bool ok = true;
+    if(sync_write){
+        ok = std::visit([&](auto& driver)->bool{
+            return send_parallel(driver, active_joints_[0]->mode, ids_, positions_, max_speeds_, velocities_, accelerations_);
+        }, driver_);
+    }
+    if(!ok) hardware_interface::return_type::OK; 
+
+    current_sequence_ = sequence;
     return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type ServoInterface::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/){
-    return hardware_interface::return_type::OK;
+    bool ok = std::visit([&](auto& driver) -> bool{
+            Feedback feedback;
+
+            for(Joint* joint : active_joints_){
+                if(!read_feedback(driver, joint->id, feedback)) return false;
+
+                (void)joint->position_state->set_value<double>(feedback.position);
+                (void)joint->velocity_state->set_value<double>(feedback.velocity);
+                (void)joint->moving_state->set_value<double>(feedback.moving);
+                (void)joint->current_state->set_value<double>(feedback.current);
+            }
+            return true;
+        },
+        driver_
+    );
+    
+    return ok ? hardware_interface::return_type::OK : hardware_interface::return_type::ERROR;
 }
+
+bool ServoInterface::send_single(Joint& joint){
+    bool ok = std::visit([&](auto& driver)->bool{
+        auto velocity_opt = joint.velocity_cmd->get_optional<double>();
+        auto acceleration_opt = joint.acceleration_cmd->get_optional<double>();
+
+        if(!velocity_opt || !acceleration_opt) return false;
+
+        double position = 0.0;
+        if(joint.mode == ControlMode::POSITION){
+            auto position_opt = joint.position_cmd->get_optional<double>();
+            if(!position_opt) return false;
+            position = *position_opt;
+        }
+
+        Command command;
+        if(!encode(driver, joint.mode, position, *velocity_opt, *acceleration_opt, command)) 
+            return false;
+        
+        if(!driver_send_single(driver, joint.id, joint.mode, command))
+            return false;
+
+        return true;
+    }, driver_);    
+
+    return ok;
+}
+
+bool ServoInterface::parse_parallel_commands(Joint& joint){
+    auto velocity_opt = joint.velocity_cmd->get_optional<double>();
+    auto acceleration_opt = joint.acceleration_cmd->get_optional<double>();
+
+    if(!velocity_opt || !acceleration_opt) return false;
+
+    int16_t velocity = sms_sts::velocity(*velocity_opt);
+    uint8_t acceleration = sms_sts::acceleration(*acceleration_opt);
+
+    if(joint.mode == ControlMode::POSITION){
+        auto position_opt = joint.position_cmd->get_optional<double>();
+        if(!position_opt) return false;
+
+        int16_t position = sms_sts::position(*position_opt);
+        int16_t max_speed = static_cast<uint16_t>(std::abs(velocity));
+
+        ids_.push_back(joint.id);
+        positions_.push_back(position);
+        max_speeds_.push_back(max_speed);
+        velocities_.push_back(velocity);
+        accelerations_.push_back(acceleration);
+
+        return true;
+    }
+
+    if(joint.mode == ControlMode::VELOCITY){
+        ids_.push_back(joint.id);
+        velocities_.push_back(velocity);
+        accelerations_.push_back(acceleration);
+    }
+    
+    return true;
+}
+
+inline void ServoInterface::clear_command_buffers(){
+    active_joints_.clear();
+
+    ids_.clear();
+    positions_.clear();
+    max_speeds_.clear();
+    velocities_.clear();
+    accelerations_.clear();
+}
+
 
 } // namespace zemo_hardware
 

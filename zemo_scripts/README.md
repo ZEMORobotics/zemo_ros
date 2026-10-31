@@ -6,6 +6,34 @@ This script is **not meant to be executed**.
 It serves as a list of all APT packages required by the ZEMO platform.
 Whenever a new required package is installed using `apt`, it should also be added to this file.
 
+## `MAC address problems`
+
+Trough some testing, it has been discovered that ARP protocol on raspberry 5 is missbehaving.
+
+To fix this you need to log in into the ruter page and find the raspberry ip address in DHCP client list or similar tab.
+Once you find the <raspberry ip> do the following:
+
+1. Install ARP ping: ```sudo apt install iputils-arping```
+2. Do the ARP ping: ```sudo arping -I enp9s0 -c 5 <raspberry ip>```
+If no response, then it is ARP protocol problem.
+
+3. You can check the current setting of <raspberry ip>: ```ip neigh show <raspberry ip>```
+
+You should get something like this:
+```
+<raspberry ip> dev enp9s0 lladdr 88:a2:9e:ed:56:4d STALE 
+```
+
+4. Make the MAC address of raspberry pi permanent: ```sudo ip neigh replace <raspberry ip> lladdr 88:a2:9e:ed:56:4d nud permanent dev enp9s0```
+5. Check the results again with: ```ip neigh show <raspberry ip>```
+
+You should get something like this:
+```
+<raspberry ip> dev enp9s0 lladdr 88:a2:9e:ed:56:4d PERMANENT 
+```
+
+As seen in the command, the MAC address of this raspberry is: 88:a2:9e:ed:56:4d
+
 ## `configure_raspberry.sh`
 
 This script configures the Raspberry Pi environment and adds useful ROS 2 commands and settings to `.bashrc`.
