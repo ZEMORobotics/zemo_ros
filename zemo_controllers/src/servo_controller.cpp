@@ -45,7 +45,7 @@ controller_interface::CallbackReturn ServoController::on_init(){
 
         auto_declare<double>("max_current", 3000.0);
         auto_declare<double>("tolerance", 0.1);
-        auto_declare<double>("velocity_tolerance", 0.5);
+        auto_declare<double>("velocity_tolerance", 3.0);
         auto_declare<std::string>("usb_port", "ttyAMA0");
     }
     catch(const std::exception & e){
@@ -156,11 +156,26 @@ controller_interface::CallbackReturn ServoController::on_deactivate(const rclcpp
         joint.status_handle.reset();
     }
 
-    current_active_command_.reset();
+    auto abort_command = [](ActiveCommand& command){
+        if(command.goal_handle && command.goal_handle->is_active()){
+            auto result = std::make_shared<ServoAction::Result>();
+            result->result = ServoAction::Goal::ERROR;
+            command.goal_handle->abort(result);
+        }
+    };
+
+    if(current_active_command_){
+        abort_command(*current_active_command_);
+        current_active_command_.reset();
+    }
+
+    std::optional<ActiveCommand> pending;
     {
         std::lock_guard<std::mutex> lock(command_mutex_);
+        pending = std::move(current_pending_command_);
         current_pending_command_.reset();
     }
+
     action_server_.reset();
     command_busy_.store(false);
 

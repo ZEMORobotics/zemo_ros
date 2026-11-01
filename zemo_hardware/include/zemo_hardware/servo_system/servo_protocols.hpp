@@ -1,6 +1,7 @@
 #pragma once
 
 #include "zemo_hardware/servo_system/waveshare_driver/SMS_STS.h"
+#include "zemo_hardware/servo_system/waveshare_driver/CF.h"
 #include "zemo_hardware/servo_system/waveshare_driver/HLSCL.h"
 #include "zemo_hardware/servo_system/waveshare_driver/SCS0009.h"
 #include "zemo_hardware/servo_system/waveshare_driver/SCSCL.h"
@@ -17,7 +18,7 @@
 
 namespace zemo_hardware{
 
-enum class ProtocolType{SMS_STS, HLSCL, SCS0009, SCSCL};
+enum class ProtocolType{SMS_STS, CF, HLSCL, SCS0009, SCSCL};
 
 
 // This allows for typos when writing protocol type in urdf
@@ -27,14 +28,17 @@ static std::unordered_map<std::string, ProtocolType> allowed_protocols{
     {"alibabaisedampatuljaka", ProtocolType::SMS_STS}, 
     {"sms", ProtocolType::SMS_STS},
     {"sts", ProtocolType::SMS_STS}, 
-    {"st3215", ProtocolType::SMS_STS}
+    {"st3215", ProtocolType::SMS_STS},
+    {"cf", ProtocolType::CF},
+    {"cf35-12", ProtocolType::CF},
+    {"pickamaterina", ProtocolType::CF}
 };
 
 // Fancy c++ union. This means that before runtime we don't know the protocol, therefore don't know
 // the type being used by the servo driver. So we apply a pattern with union that will allow us
 // to assign the type of driver_ in runtime.
 // Strongly recommend to read docs on std::variant.
-using ServoDriver = std::variant<SMS_STS, HLSCL, SCS0009, SCSCL>;
+using ServoDriver = std::variant<SMS_STS, CF, HLSCL, SCS0009, SCSCL>;
 enum ControlMode : uint8_t {POSITION=0, VELOCITY=1};
 
 
@@ -55,6 +59,7 @@ inline bool make_driver(ServoDriver& driver, ProtocolType protocol){
     // Fancy union typization
     switch(protocol){
         case ProtocolType::SMS_STS: driver.emplace<SMS_STS>(); return true;
+        case ProtocolType::CF: driver.emplace<CF>(); return true;
         case ProtocolType::HLSCL: driver.emplace<HLSCL>(); return true;
         case ProtocolType::SCS0009: driver.emplace<SCS0009>(); return true;
         case ProtocolType::SCSCL: driver.emplace<SCSCL>(); return true;
@@ -122,21 +127,26 @@ inline bool read_status(Driver&, uint8_t, Status&){
 }
 
 namespace sms_sts{
-    inline constexpr double STEPS_PER_RAD = 4096.0 / (2.0 * M_PI);
-    inline constexpr double ACC_UNIT = 100.0;
+    inline constexpr double STEPS_PER_DEG = 4096.0 / 360.0;
+    inline constexpr double SPEED_UNIT = 0.732 * 360.0 / 60.0;
+    inline constexpr double ACC_UNIT = 8.7;
 
-    [[gnu::always_inline]] inline int16_t position(double rad){
-        return static_cast<int16_t>(std::clamp(std::lround(rad * STEPS_PER_RAD), -4095L, 4095L));
+    [[gnu::always_inline]] inline int16_t position(double deg){
+        return static_cast<int16_t>(std::clamp(std::lround(deg * STEPS_PER_DEG), 0L, 4095L));
     }
-    [[gnu::always_inline]] inline int16_t velocity(double rad_s){
-        return static_cast<int16_t>(std::clamp(std::lround(rad_s * STEPS_PER_RAD), -3400L, 3400L));
+    [[gnu::always_inline]] inline int16_t velocity(double deg_s){
+        return static_cast<int16_t>(std::clamp(std::lround(deg_s / SPEED_UNIT), -61L, 61L));
     }
-    [[gnu::always_inline]] inline uint8_t acceleration(double rad_s2){
-        return static_cast<uint8_t>(std::clamp(std::lround(std::abs(rad_s2) * STEPS_PER_RAD / ACC_UNIT), 0L, 254L));
+    [[gnu::always_inline]] inline uint8_t acceleration(double deg_s2){
+        return static_cast<uint8_t>(std::clamp(std::lround(std::abs(deg_s2) / ACC_UNIT), 0L, 254L));
     }
 
-    [[gnu::always_inline]] inline double to_rad(int steps){
-        return static_cast<double>(steps) / STEPS_PER_RAD;
+    [[gnu::always_inline]] inline double to_deg(int steps){
+        return static_cast<double>(steps) / STEPS_PER_DEG;
+    }
+
+    [[gnu::always_inline]] inline double to_deg_s(int speed) {
+        return static_cast<double>(speed) * SPEED_UNIT;
     }
 }   // namespace sms_sts
 
@@ -187,8 +197,8 @@ inline bool read_feedback(SMS_STS& driver, uint8_t& id, Feedback& feedback){
     if(driver.FeedBack(id) != 1)
         return false;
 
-    feedback.position = sms_sts::to_rad(driver.ReadPos(-1));
-    feedback.velocity = sms_sts::to_rad(driver.ReadSpeed(-1));
+    feedback.position = sms_sts::to_deg(driver.ReadPos(-1));
+    feedback.velocity = sms_sts::to_deg_s(driver.ReadSpeed(-1));
     feedback.moving = static_cast<double>(driver.ReadMove(-1));
     feedback.current = static_cast<double>(driver.ReadCurrent(-1));
 
@@ -202,6 +212,101 @@ inline bool read_status(SMS_STS& driver, uint8_t& id, Status& status){
     status.voltage = driver.ReadVoltage(-1) / 10.0;
     status.temperature = driver.ReadTemper(-1);
     status.current = driver.ReadCurrent(-1);
+
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace cf{
+    inline constexpr double STEPS_PER_DEG = 4096.0 / 360.0;
+    inline constexpr double SPEED_UNIT = 0.732 * 360.0 / 60.0;
+    inline constexpr double ACC_UNIT = 8.7;
+
+    [[gnu::always_inline]] inline int16_t position(double deg){
+        return static_cast<int16_t>(std::clamp(std::lround(deg * STEPS_PER_DEG), -32767L, 32767L));
+    }
+    [[gnu::always_inline]] inline int16_t velocity(double deg_s){
+        return static_cast<int16_t>(std::clamp(std::lround(deg_s / SPEED_UNIT), -61L, 61L));
+    }
+    [[gnu::always_inline]] inline uint8_t acceleration(double deg_s2){
+        return static_cast<uint8_t>(std::clamp(std::lround(std::abs(deg_s2) / ACC_UNIT), 0L, 254L));
+    }
+
+    [[gnu::always_inline]] inline double to_deg(int steps){
+        return static_cast<double>(steps) / STEPS_PER_DEG;
+    }
+
+    [[gnu::always_inline]] inline double to_deg_s(int speed) {
+        return static_cast<double>(speed) * SPEED_UNIT;
+    }
+}   // namespace cf
+
+inline bool init_motor(CF& driver, uint8_t& id, ControlMode mode){
+    return driver.InitMotor(id, mode, 0) != 0;
+}
+
+inline bool torque(CF& driver, uint8_t& id, uint8_t enable){
+    return driver.EnableTorque(id, enable);
+}
+
+inline bool encode(CF&, ControlMode mode, double position, double velocity, double acceleration, Command& command){
+    if(mode != ControlMode::POSITION)
+        return false;
+
+    command.velocity = cf::velocity(velocity);
+    command.acceleration = cf::acceleration(acceleration);
+
+    if(mode == ControlMode::POSITION){
+        command.position = cf::position(position);
+        command.max_speed = static_cast<uint16_t>(std::abs(command.velocity));
+    }
+    return true;
+}
+
+inline bool driver_send_single(CF& driver, uint8_t& id, ControlMode mode, const Command& command){
+    if(mode == ControlMode::POSITION){
+        return driver.WritePosEx(id, command.position, command.max_speed, command.acceleration);
+    }
+    return false;
+}
+
+inline bool send_parallel(CF& driver, ControlMode mode,
+    std::vector<uint8_t>& ids,
+    std::vector<int16_t>& positions,
+    std::vector<uint16_t>& max_speeds,
+    [[maybe_unused]] std::vector<int16_t>& velocities,
+    std::vector<uint8_t>& accelerations)
+{
+
+    if(mode == ControlMode::POSITION){
+        driver.SyncWritePosEx(ids.data(), static_cast<uint8_t>(ids.size()), positions.data(), max_speeds.data(), accelerations.data());
+    }else{
+        return false;
+    }
+
+    return true;
+}
+
+inline bool read_feedback(CF& driver, uint8_t& id, Feedback& feedback){
+    if(driver.FeedBack(id) != 1)
+        return false;
+
+    feedback.position = cf::to_deg(driver.ReadPos(-1));
+    feedback.velocity = cf::to_deg_s(driver.ReadSpeed(-1));
+    feedback.moving = static_cast<double>(driver.ReadMove(-1));
+    feedback.current = static_cast<double>(driver.ReadCurrent(-1) * 6.5);
+
+    return true;
+}
+
+inline bool read_status(CF& driver, uint8_t& id, Status& status){
+    if(driver.FeedBack(id) != 1)
+        return false;
+
+    status.voltage = driver.ReadVoltage(-1) / 10.0;
+    status.temperature = driver.ReadTemper(-1);
+    status.current = driver.ReadCurrent(-1) * 6.5;
 
     return true;
 }

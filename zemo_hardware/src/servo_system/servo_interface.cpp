@@ -86,7 +86,7 @@ hardware_interface::CallbackReturn ServoInterface::on_configure(const rclcpp_lif
                     RCLCPP_INFO(rclcpp::get_logger(LOGGER), "Servo %s online", joint.name.c_str());
                     break;
                 }
-                local_count--;
+                --local_count;
             }
 
             if(local_count <= 0){
@@ -237,7 +237,7 @@ hardware_interface::CallbackReturn ServoInterface::on_deactivate(const rclcpp_li
     bool ok = std::visit([&](auto& driver) -> bool{
             bool success = true;
             for(Joint& joint : joint_list_){
-                if(!torque(driver, joint.id, 1)){
+                if(!torque(driver, joint.id, 0)){
                     success = false;
                     RCLCPP_ERROR(rclcpp::get_logger(LOGGER), "Failed to disable torque on motor %s.", joint.name.c_str());
                 }
@@ -269,7 +269,7 @@ hardware_interface::return_type ServoInterface::write(const rclcpp::Time& /*time
 
     for(Joint& joint : joint_list_){
         auto joint_sequence_opt = joint.joint_sequence_cmd->get_optional<double>();
-        if(!joint_sequence_opt) return hardware_interface::return_type::OK;
+        if(!joint_sequence_opt) continue;;
 
         uint64_t joint_sequence = static_cast<uint64_t>(*joint_sequence_opt);
 
@@ -279,7 +279,8 @@ hardware_interface::return_type ServoInterface::write(const rclcpp::Time& /*time
         active_joints_.push_back(&joint);
 
         if(sync_write){
-            parse_parallel_commands(joint);
+            if(!parse_parallel_commands(joint))
+                return hardware_interface::return_type::ERROR;
         }else{
             if(!send_single(joint)) return hardware_interface::return_type::ERROR;
             break;
@@ -288,11 +289,15 @@ hardware_interface::return_type ServoInterface::write(const rclcpp::Time& /*time
 
     bool ok = true;
     if(sync_write){
+        if(active_joints_.empty())
+            return hardware_interface::return_type::OK;
+
         ok = std::visit([&](auto& driver)->bool{
             return send_parallel(driver, active_joints_[0]->mode, ids_, positions_, max_speeds_, velocities_, accelerations_);
         }, driver_);
     }
-    if(!ok) hardware_interface::return_type::OK; 
+    if(!ok)
+        return hardware_interface::return_type::ERROR; 
 
     current_sequence_ = sequence;
     return hardware_interface::return_type::OK;
@@ -346,37 +351,38 @@ bool ServoInterface::send_single(Joint& joint){
 }
 
 bool ServoInterface::parse_parallel_commands(Joint& joint){
-    auto velocity_opt = joint.velocity_cmd->get_optional<double>();
-    auto acceleration_opt = joint.acceleration_cmd->get_optional<double>();
+    bool ok = std::visit([&](auto& driver)->bool{
+        Command command;
 
-    if(!velocity_opt || !acceleration_opt) return false;
+        auto velocity_opt = joint.velocity_cmd->get_optional<double>();
+        auto acceleration_opt = joint.acceleration_cmd->get_optional<double>();
 
-    int16_t velocity = sms_sts::velocity(*velocity_opt);
-    uint8_t acceleration = sms_sts::acceleration(*acceleration_opt);
+        if(!velocity_opt || !acceleration_opt) return false;
 
-    if(joint.mode == ControlMode::POSITION){
-        auto position_opt = joint.position_cmd->get_optional<double>();
-        if(!position_opt) return false;
+        double position = 0.0;
+        if(joint.mode == ControlMode::POSITION){
+            auto position_opt = joint.position_cmd->get_optional<double>();
+            if(!position_opt) return false;
+            position = *position_opt;
+        }
 
-        int16_t position = sms_sts::position(*position_opt);
-        int16_t max_speed = static_cast<uint16_t>(std::abs(velocity));
-
+        if(!encode(driver, joint.mode, position, *velocity_opt, *acceleration_opt, command)) 
+            return false;
+        
         ids_.push_back(joint.id);
-        positions_.push_back(position);
-        max_speeds_.push_back(max_speed);
-        velocities_.push_back(velocity);
-        accelerations_.push_back(acceleration);
+        velocities_.push_back(command.velocity);
+        accelerations_.push_back(command.acceleration);
+
+        if(joint.mode == ControlMode::POSITION){
+            positions_.push_back(command.position);
+            max_speeds_.push_back(command.max_speed);
+        }
 
         return true;
-    }
 
-    if(joint.mode == ControlMode::VELOCITY){
-        ids_.push_back(joint.id);
-        velocities_.push_back(velocity);
-        accelerations_.push_back(acceleration);
-    }
-    
-    return true;
+    }, driver_);
+
+    return ok;
 }
 
 inline void ServoInterface::clear_command_buffers(){
