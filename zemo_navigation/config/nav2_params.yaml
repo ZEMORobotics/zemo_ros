@@ -2,24 +2,24 @@ controller_server:
   ros__parameters:
     use_sim_time: false
     enable_stamped_cmd_vel: true
-    controller_frequency: 20.0
+    controller_frequency: 10.0
     costmap_update_timeout: 0.3
     use_realtime_priority: false
     publish_zero_velocity: true
-    action_server_result_timeout: 10.0
-    min_x_velocity_threshold: 0.001
+    action_server_result_timeout: 10.0           # ja menjao
+    min_x_velocity_threshold: 0.01
     min_y_velocity_threshold: 0.05
-    min_theta_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.01
     failure_tolerance: 0.3
     #speed_limit_topic: speed_limit        # published by speed filter
     odom_topic: "odom"
-    controller_plugins: ["FollowPath"]
+    controller_plugins: ["FollowPath", "MyController"]
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
-      movement_time_allowance: 10.0
+      movement_time_allowance: 3.0
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.25
@@ -35,6 +35,12 @@ controller_server:
         - GoalAlign
         - PathDist
         - GoalDist
+    MyController:
+      plugin: "zemo_navigation::CircularArcController" # In Iron and older versions, "/" was used instead of "::"
+      collison_disatnce_topic: "/stopping_distance"
+      min_lin_vel_tolerance: 0.05
+      #stopping_distance: 0.2
+      
 
 local_costmap:
   local_costmap:
@@ -61,7 +67,7 @@ local_costmap:
         lidar: 
           topic: /scan
           data_type: "LaserScan"
-          expected_update_rate: 1000000.1        # samo da ne bi izbacivao warn za pravi treba ostaviti
+          expected_update_rate: 10000000.1        # samo da ne bi izbacivao warn za pravi treba ostaviti
           sensor_frame: base_link
           inf_is_valid: false
           marking: true
@@ -206,7 +212,7 @@ collision_detector:
       min_points: 1
       visualize: true                    # my
       polygon_pub_topic: "/back_zone"
-      polygon_sub_topic: "/stopping_distamce"
+      polygon_sub_topic: "/stopping_distance"
 
     observation_sources: ["scan"]
 

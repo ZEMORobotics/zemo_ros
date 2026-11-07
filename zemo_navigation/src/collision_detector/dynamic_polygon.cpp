@@ -1,4 +1,4 @@
-#include "zemo_navigation/dynamic_polygon.hpp"
+#include "zemo_navigation/collision_detector/dynamic_polygon.hpp"
 
 #include <math.h>
 #include <cmath>
@@ -18,6 +18,7 @@ DynamicPolygon::DynamicPolygon(
 : Polygon::Polygon(node, polygon_name, tf_buffer, base_frame_id, transform_tolerance)
 {
   RCLCPP_INFO(logger_, "[%s]: Creating DynamicPolygon", polygon_name_.c_str());
+  stopping_distance_ = STOPPING_DISTANCE_TREASHOLD;
 }
 
 DynamicPolygon::~DynamicPolygon()
@@ -41,8 +42,7 @@ bool DynamicPolygon::getParameters(
   try 
   {
     // Leave it not initialized: the will cause an error if it will not set
-    nav2_util::declare_parameter_if_not_declared(
-      node, polygon_name_ + ".wheel_separation", rclcpp::PARAMETER_DOUBLE);
+    nav2_util::declare_parameter_if_not_declared(node, polygon_name_ + ".wheel_separation", rclcpp::PARAMETER_DOUBLE);
     wheel_separation_ = node->get_parameter(polygon_name_ + ".wheel_separation").as_double();
   } catch (const rclcpp::exceptions::ParameterUninitializedException &) 
   {
@@ -51,13 +51,14 @@ bool DynamicPolygon::getParameters(
   }
 
   // dynamic polygon init
-  poly_.assign({{0.0, wheel_separation_/2}, {wheel_separation_, wheel_separation_/2}, {wheel_separation_, -(wheel_separation_/2)}, {0.0, -(wheel_separation_/2)}});
+  poly_.assign({{0.0, wheel_separation_/2}, {wheel_separation_, wheel_separation_/2}, 
+    {wheel_separation_, -(wheel_separation_/2)}, {0.0, -(wheel_separation_/2)}});
 
   bool ret = true;
-  if (!getCommonParameters(
-      polygon_sub_topic, polygon_pub_topic, footprint_topic, true))
+  if (!getCommonParameters(polygon_sub_topic, polygon_pub_topic, footprint_topic, true))
   {
-    if (polygon_sub_topic.empty()) {
+    if (polygon_sub_topic.empty()) 
+    {
       RCLCPP_ERROR(
         logger_,
         "[%s]: Error while getting DynamicPolygon parameters: static stopping distamce and sub topic both not defined",
@@ -75,17 +76,20 @@ bool DynamicPolygon::getParameters(
 void DynamicPolygon::createSubscription(std::string & polygon_sub_topic)
 {
   auto node = node_.lock();
-  if (!node) {
+  if (!node) 
+  {
     throw std::runtime_error{"Failed to lock node"};
   }
 
-  if (!polygon_sub_topic.empty()) {
+  if (!polygon_sub_topic.empty())
+  {
     RCLCPP_INFO(
       logger_,
       "[%s]: Subscribing on %s topic for polygon",
       polygon_name_.c_str(), polygon_sub_topic.c_str());
     rclcpp::QoS polygon_qos = rclcpp::SystemDefaultsQoS();  // set to default
-    if (polygon_subscribe_transient_local_) {
+    if (polygon_subscribe_transient_local_) 
+    {
       polygon_qos.transient_local();
     }
     stopping_dis_sub_ = node->create_subscription<std_msgs::msg::Float32>(
@@ -96,15 +100,22 @@ void DynamicPolygon::createSubscription(std::string & polygon_sub_topic)
 
 void DynamicPolygon::updatePolygon(double stopping_distance)
 {
-  // Update DynamicPolygon radius
-  stopping_distance_ = stopping_distance;
+  if (std::fabs(stopping_distance) <= STOPPING_DISTANCE_TREASHOLD)
+  {
+    stopping_distance_ = STOPPING_DISTANCE_TREASHOLD;
+  }
+  else
+  {
+    stopping_distance_ = stopping_distance;
+  }
 
   // Create a polygon from radius and store it
   std::vector<nav2_collision_monitor::Point> poly;
   getPolygon(poly);
   polygon_.polygon.points.clear();  // clear polygon points
   poly_.clear();
-  for (nav2_collision_monitor::Point & p : poly) {
+  for (nav2_collision_monitor::Point & p : poly) 
+  {
     if (p.x != 0.0)
     {
       p.x = stopping_distance_;
@@ -121,7 +132,7 @@ void DynamicPolygon::updatePolygon(double stopping_distance)
       geometry_msgs::msg::Point32 p_s;
       p_s.x = p.x;
       p_s.y = p.y;
-      RCLCPP_INFO(logger_, "[%f], [%f]: Points values", p_s.x, p_s.y);
+      //RCLCPP_INFO(logger_, "[%f], [%f]: Points values", p_s.x, p_s.y);
       // p_s.z will remain 0.0
       polygon_.polygon.points.push_back(p_s);  // add new points
     }
@@ -130,10 +141,7 @@ void DynamicPolygon::updatePolygon(double stopping_distance)
 
 void DynamicPolygon::stopDisatnceCallback(std_msgs::msg::Float32::ConstSharedPtr msg)
 {
-  RCLCPP_INFO(
-    logger_,
-    "[%s]: Polygon DynamicPolygon radius update has been arrived",
-    polygon_name_.c_str());
+  //RCLCPP_INFO(logger_, "[%s]: Polygon DynamicPolygon radius update has been arrived", polygon_name_.c_str());
   updatePolygon(msg->data);
 }
 

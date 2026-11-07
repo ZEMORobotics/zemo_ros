@@ -1,4 +1,4 @@
-#include "zemo_navigation/collision_detector.hpp"
+#include "zemo_navigation/collision_detector/collision_detector.hpp"
 
 #include <exception>
 #include <utility>
@@ -323,12 +323,13 @@ void CollisionDetector::process()
       if (!source->getData(curr_time, collision_points) &&
         source->getSourceTimeout().seconds() != 0.0)
       {
-        RCLCPP_WARN(
+        // zemo warn todo
+        /*RCLCPP_WARN(
           get_logger(),
           "Invalid source %s detected."
           " Either due to data not published yet, or to lack of new data received within the"
           " sensor timeout, or if impossible to transform data to base frame",
-          source->getSourceName().c_str());
+          source->getSourceName().c_str());*/
       }
     }
   }

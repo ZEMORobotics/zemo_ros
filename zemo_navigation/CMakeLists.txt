@@ -13,6 +13,8 @@ find_package(rclcpp_components REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_collision_monitor REQUIRED)
+find_package(nav2_core REQUIRED)
+find_package(angles REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -21,8 +23,11 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(ruckig REQUIRED)
+
 
 
 set(detector_executable_name zemo_collision_detector)
@@ -92,21 +97,6 @@ install(
   RUNTIME DESTINATION bin
 )
 
-# collison
-add_executable(collison src/Collison.cpp)
-ament_target_dependencies(collison 
-  rclcpp
-  nav2_costmap_2d
-  tf2
-  nav2_util
-  std_msgs)
-
-
-install(TARGETS
-  collison
-  DESTINATION lib/${PROJECT_NAME})
-
-
 # collison detector
 add_library(${detector_library_name} SHARED
   src/collision_detector/collision_detector.cpp
@@ -166,6 +156,38 @@ install(TARGETS ${detector_library_name}
 install(TARGETS ${detector_executable_name}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
+
+# controller plugin circular_arc
+add_library(circular_arc SHARED src/controller_plugins/circular_arc.cpp)
+
+target_include_directories(circular_arc PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(circular_arc
+  rclcpp
+  geometry_msgs
+  nav2_costmap_2d
+  pluginlib
+  nav_msgs
+  std_msgs
+  angles
+  nav2_util
+  nav2_core
+  tf2
+  tf2_geometry_msgs
+)
+target_link_libraries(circular_arc ruckig::ruckig)
+
+install(TARGETS circular_arc
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+pluginlib_export_plugin_description_file(nav2_core circular_arc_plugin.xml)
+
 
 # Install launch files.
 install(DIRECTORY

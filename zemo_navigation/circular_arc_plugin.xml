@@ -1,0 +1,7 @@
+<library path="circular_arc">
+  <class type="zemo_navigation::CircularArcController" base_class_type="nav2_core::Controller">
+    <description>
+      This is Circular Arc controller plugin
+    </description>
+  </class>
+</library>

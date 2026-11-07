@@ -9,6 +9,9 @@
 
 #include "nav2_collision_monitor/polygon.hpp"
 
+// two x points need to be non zero values so this value is used for easier track of values
+#define STOPPING_DISTANCE_TREASHOLD 0.0001
+
 namespace zemo_navigation
 {
 

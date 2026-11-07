@@ -2,7 +2,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-#include "zemo_navigation/collision_detector.hpp"
+#include "zemo_navigation/collision_detector/collision_detector.hpp"
 
 int main(int argc, char * argv[])
 {

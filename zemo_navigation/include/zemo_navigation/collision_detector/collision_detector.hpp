@@ -26,7 +26,7 @@
 #include "nav2_collision_monitor/polygon_source.hpp"
 
 // ZEMO addition
-#include "zemo_navigation/dynamic_polygon.hpp"
+#include "zemo_navigation/collision_detector/dynamic_polygon.hpp"
 #include <unordered_map>
 
 /**
