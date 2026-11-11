@@ -35,7 +35,8 @@ set(detector_library_name ${detector_executable_name}_core)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 
-# move
+# --------------------------------------------------------------------------
+# move action server
 add_library(move SHARED src/move.cpp)
 
 target_include_directories(move PRIVATE
@@ -66,6 +67,7 @@ rclcpp_components_register_node(
   EXECUTABLE move_server
 )
 
+# --------------------------------------------------------------------------
 # additional obstacle plugin
 add_library(additional_obstacle_layer SHARED
   src/AdditionalObstacleLayer.cpp)
@@ -97,6 +99,7 @@ install(
   RUNTIME DESTINATION bin
 )
 
+# --------------------------------------------------------------------------
 # collison detector
 add_library(${detector_library_name} SHARED
   src/collision_detector/collision_detector.cpp
@@ -157,6 +160,7 @@ install(TARGETS ${detector_executable_name}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
+# --------------------------------------------------------------------------
 # controller plugin circular_arc
 add_library(circular_arc SHARED src/controller_plugins/circular_arc.cpp)
 
@@ -188,7 +192,40 @@ install(TARGETS circular_arc
 
 pluginlib_export_plugin_description_file(nav2_core circular_arc_plugin.xml)
 
+# --------------------------------------------------------------------------
+# controller plugin straight_line_move
+add_library(straight_line_move SHARED src/controller_plugins/straight_line_move.cpp)
 
+target_include_directories(straight_line_move PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(straight_line_move
+  rclcpp
+  geometry_msgs
+  nav2_costmap_2d
+  pluginlib
+  nav_msgs
+  std_msgs
+  angles
+  nav2_util
+  nav2_core
+  tf2
+  tf2_geometry_msgs
+)
+target_link_libraries(straight_line_move ruckig::ruckig)
+
+install(TARGETS straight_line_move
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+pluginlib_export_plugin_description_file(nav2_core straight_line_move_plugin.xml)
+
+
+# --------------------------------------------------------------------------
 # Install launch files.
 install(DIRECTORY
   launch

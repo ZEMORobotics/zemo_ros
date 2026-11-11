@@ -1,0 +1,7 @@
+<library path="straight_line_move">
+  <class type="zemo_navigation::StraightLineMove" base_class_type="nav2_core::Controller">
+    <description>
+      This is straight line with rotation towards goal controller plugin
+    </description>
+  </class>
+</library>

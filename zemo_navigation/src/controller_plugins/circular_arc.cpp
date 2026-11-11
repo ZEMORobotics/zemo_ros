@@ -2,14 +2,7 @@
 // This version intentionally does not implement navigation control.
 // It returns zero velocity and avoids Regulated Pure Pursuit dependencies.
 
-#include <memory>
-#include <string>
-#include <utility>
-
 #include "zemo_navigation/controller_plugins/circular_arc.hpp"
-#include "nav2_core/controller_exceptions.hpp"
-
-#include "nav2_util/node_utils.hpp"
 
 #define sign(x) (((x) > 0) - ((x) < 0))
 
@@ -17,12 +10,23 @@ static constexpr double PI_2 = M_PI * 2.0;
 
 namespace zemo_navigation
 {
+/**
+ * @brief Reverses the direction of the given angle by 180 degrees (PI radians).
+ * @param angle Pointer to the angle in radians.
+ */
 inline static void angle_reverse(double* angle)
 {    
   *angle >= 0 ? *angle-= M_PI : *angle+= M_PI;
 }
 
-void CircularArcController::shortest_path_direction(const double alpha, double robot_yaw)
+/**
+ * @brief Determine whether the robot should drive backwards to reach the target,
+ * sets the reversing flag if the target is behind the robot
+ * @param alpha Angle of the vector from the robot to the target in the global frame
+ * @param robot_yaw Current robot yaw in the global frame
+ * @return Boolean thaht defines if robot should go in reverse
+ */
+static inline bool shortest_path_direction(const double alpha, double robot_yaw)
 {
   double angle = alpha - robot_yaw;
 
@@ -35,10 +39,7 @@ void CircularArcController::shortest_path_direction(const double alpha, double r
     angle += PI_2;
   }
   
-  if (angle > M_PI_2 || angle < -M_PI_2)
-  {
-    reversing_ = true;
-  }
+  return (angle > M_PI_2 || angle < -M_PI_2);
 }
 
 geometry_msgs::msg::TwistStamped CircularArcController::computeVelocityCommands(const geometry_msgs::msg::PoseStamped & pose,
@@ -49,15 +50,18 @@ geometry_msgs::msg::TwistStamped CircularArcController::computeVelocityCommands(
     init_movement(pose);
   }
 
-  // TODO puna formula za stopping distance
-  //const double stopping_distance = (stopping_distance_ + ((speed.linear.x * speed.linear.x) / (2 * max_lin_acc_))
-    //+ (std::fabs(speed.linear.x) / update_rate_) + ((std::fabs(speed.linear.x) * max_lin_acc_) / (2 * max_lin_jerk_)) * linear_vel_sign_);
-  double stopping_distance = stopping_distance_ + ((ruckig_output_.new_velocity[0] * ruckig_output_.new_velocity[0]) / (2 * max_lin_acc_))
-    + (std::fabs(ruckig_output_.new_velocity[0]) / update_rate_) + ((std::fabs(ruckig_output_.new_velocity[0]) * max_lin_acc_) / (2 * max_lin_jerk_));
-  // for dynamic polygon implementation negative values a for backwords movement
-  RCLCPP_INFO(logger_,"STOPPING DISTANCE:%lf, IZRACUNAT STOPPING:%lf", stopping_distance_, stopping_distance);
-  stopping_distance*=linear_vel_sign_;
-  stopping_distance_publish(stopping_distance);
+  if (state_ == MOVING)  
+  {
+    // TODO puna formula za stopping distance
+    //const double stopping_distance = (stopping_distance_ + ((speed.linear.x * speed.linear.x) / (2 * max_lin_acc_))
+      //+ (std::fabs(speed.linear.x) / update_rate_) + ((std::fabs(speed.linear.x) * max_lin_acc_) / (2 * max_lin_jerk_)) * linear_vel_sign_);
+    double stopping_distance = stopping_distance_ + ((ruckig_output_.new_velocity[0] * ruckig_output_.new_velocity[0]) / (2 * max_lin_acc_))
+      + (std::fabs(ruckig_output_.new_velocity[0]) / update_rate_) + ((std::fabs(ruckig_output_.new_velocity[0]) * max_lin_acc_) / (2 * max_lin_jerk_));
+    // for dynamic polygon implementation negative values a for backwords movement
+    RCLCPP_INFO(logger_,"STOPPING DISTANCE:%lf, IZRACUNAT STOPPING:%lf", stopping_distance_, stopping_distance);
+    stopping_distance*=linear_vel_sign_;
+    stopping_distance_publish(stopping_distance);
+  }
 
   if (state_ == MOVING && (collison_detetected_ || ir_sensor_detected_ || cancelling_))
   {
@@ -65,17 +69,19 @@ geometry_msgs::msg::TwistStamped CircularArcController::computeVelocityCommands(
     init_stopping(ruckig_output_.new_velocity[0]);
   }
 
-  // Intentionally stop the robot; this is only a plugin-loading/build test.
   auto cmd_vel = std::make_unique<geometry_msgs::msg::TwistStamped>();
-
   regulate_velocity(pose, cmd_vel.get());
-  
+
+  geometry_msgs::msg::Twist cmd_vel_turtle;
+  cmd_vel_turtle = cmd_vel->twist;
+  turtle_pub_->publish(cmd_vel_turtle);
+
   return *cmd_vel;
 }
 
 void CircularArcController::setPlan(const nav_msgs::msg::Path & path)
 {
-  // Intentionally implemented only for one pose goal. todo
+  // Intentionally implemented only for one pose goal. todo zemo
   target_pose_ = path.poses[0];
   need_init_ = true;
 }
@@ -111,7 +117,7 @@ void CircularArcController::init_movement(const geometry_msgs::msg::PoseStamped 
   const double alpha = std::atan2(dy, dx);
   double robot_yaw = tf2::getYaw(current_pose.pose.orientation);
 
-  shortest_path_direction(alpha, robot_yaw);
+  reversing_ = shortest_path_direction(alpha, robot_yaw);
   if (reversing_)
   {
     angle_reverse(&robot_yaw);
@@ -122,7 +128,7 @@ void CircularArcController::init_movement(const geometry_msgs::msg::PoseStamped 
     linear_vel_sign_ = 1.0;
   }
 
-  // base link transform
+  // base link transform lookup table todo vladi dadi
   const double gx = std::cos(robot_yaw) * dx + std::sin(robot_yaw) * dy;
   const double gy = -std::sin(robot_yaw) * dx + std::cos(robot_yaw) * dy;
 
@@ -131,19 +137,21 @@ void CircularArcController::init_movement(const geometry_msgs::msg::PoseStamped 
   if (L2 < 1e-6 || ir_sensor_detected_ || collison_detetected_)
   {
     // vec na destinaciji ili uopste ne krecemo todo zemo
-    return;
+    // promeniti impelmentaciju controller servera kako bi ovo postigao
+    throw nav2_core::ControllerException("Unable to init movement!");
   }
 
   // r_ is signed and carries angular velocity direction
   r_ = L2 / (2.0 * gy);
+  inv_r_ = 1.0 / r_;
 
   //const double theta1 =  2.0 * std::asin(L / (2.0 * r_));
   const double theta =  2.0 * std::atan2(gy, gx);
   //RCLCPP_INFO(logger_, "THETA1: %lf, THETA2: %lf je XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", theta1, theta);
 
-  destination_lenght_ = std::fabs(theta * r_);
+  const double destination_lenght = std::fabs(theta * r_);
 
-  RCLCPP_INFO(logger_, "UGAO ROBOTA JE: %lf, L = %lf, R = %lf, duzina polukruga = %lf, znak lin  je:%lf", robot_yaw, L2, r_, destination_lenght_, linear_vel_sign_);
+  RCLCPP_INFO(logger_, "UGAO ROBOTA JE: %lf, L2 = %lf, R = %lf, duzina polukruga = %lf, znak lin  je:%lf", robot_yaw, L2, r_, destination_lenght, linear_vel_sign_);
 
   if (ruckig_ != nullptr)
   {
@@ -154,13 +162,11 @@ void CircularArcController::init_movement(const geometry_msgs::msg::PoseStamped 
   ruckig_input_.max_velocity = {max_lin_vel_};
   ruckig_input_.max_acceleration = {max_lin_acc_};
   ruckig_input_.max_jerk = {max_lin_jerk_};
-  ruckig_input_.target_position = {destination_lenght_};
+  ruckig_input_.target_position = {destination_lenght};
   ruckig_input_.current_velocity = {0};
   ruckig_input_.current_acceleration = {0};
   ruckig_input_.current_position = {0};
   ruckig_input_.control_interface = ruckig::ControlInterface::Position;
-
-  //ruckig_->update(ruckig_input_, ruckig_output_);
 
   state_ = MOVING;
   need_init_ = false;
@@ -168,17 +174,33 @@ void CircularArcController::init_movement(const geometry_msgs::msg::PoseStamped 
 
 void CircularArcController::regulate_velocity(const geometry_msgs::msg::PoseStamped /*current_pose*/, geometry_msgs::msg::TwistStamped *cmd_vel)
 {
-  //double remaining = remaining_distance(current_pose);
   const bool is_trajectory_finished = (ruckig_->update(ruckig_input_, ruckig_output_) == ruckig::Finished);
-  double next_step = ruckig_output_.new_position[0] - ruckig_input_.current_position[0];
-  //double next_step = remaining - ruckig_output_.new_position[0];
+  switch (state_)
+  {
+  case MOVING:
+    {
+    //double remaining = remaining_distance(current_pose);
+    double next_step = ruckig_output_.new_position[0] - ruckig_input_.current_position[0];
+    //double next_step = remaining - ruckig_output_.new_position[0];
 
-  //RCLCPP_INFO(logger_, "new: %lf, cur: %lf je ", ruckig_output_.new_position[0], ruckig_input_.current_position[0]);
-  //RCLCPP_INFO(logger_, "next step: %lf, update_rate: %lf je XXX", next_step, update_rate_);
-  
-  // dx/dt (dt[s] = 1 / update rate[Hz])
-  cmd_vel->twist.linear.x = next_step * update_rate_;
-  cmd_vel->twist.angular.z = cmd_vel->twist.linear.x / r_;
+    //RCLCPP_INFO(logger_, "new: %lf, cur: %lf je ", ruckig_output_.new_position[0], ruckig_input_.current_position[0]);
+    //RCLCPP_INFO(logger_, "next step: %lf, update_rate: %lf je XXX", next_step, update_rate_);
+    
+    // dx/dt (dt[s] = 1 / update rate[Hz])
+    cmd_vel->twist.linear.x = next_step * update_rate_;
+    }
+    break;
+  case STOPPING:
+    {
+      cmd_vel->twist.linear.x = ruckig_output_.new_velocity[0];
+    }
+    break;
+  default:
+    RCLCPP_WARN(logger_, "Greska u regulate velocity!");
+    break;
+  }
+
+  cmd_vel->twist.angular.z = cmd_vel->twist.linear.x * inv_r_;
   // sign addition r_ carries angulra sign so parametar is not needed
   cmd_vel->twist.linear.x *= linear_vel_sign_;
 
@@ -190,10 +212,9 @@ void CircularArcController::regulate_velocity(const geometry_msgs::msg::PoseStam
     ruckig_output_.pass_to_input(ruckig_input_);
   }
   // u slucaju da smo u stopping stanju ovako proveravmo kraj 
-  else if (state_ == STOPPING)
+  else if (cancelling_)
   {
     finished_cancelling_ = true;
-    reset();
   }
 }
 
@@ -239,6 +260,7 @@ void CircularArcController::configure(const rclcpp_lifecycle::LifecycleNode::Wea
   reversing_ = false;
   state_ = IDLE;
 
+  // todo zemo
   //-------------------------------------------------
   max_lin_vel_ = 5.0;
   max_lin_acc_ = 10.0;
@@ -265,6 +287,7 @@ void CircularArcController::configure(const rclcpp_lifecycle::LifecycleNode::Wea
   // ---------------------------------
 
   stop_dist_pub_ = node->create_publisher<std_msgs::msg::Float32>(collison_disatnce_topic_, 1);    // zemo todo zemo qs
+  turtle_pub_ = node->create_publisher<geometry_msgs::msg::Twist>("/turtle1/cmd_vel", 1);    // zemo todo zemo qs
 
   collison_detector_subscription_ = node->create_subscription<nav2_msgs::msg::CollisionDetectorState>(
     "/collision_detector_state", 10, std::bind(&CircularArcController::collision_detector_callback, this, std::placeholders::_1));
@@ -276,6 +299,7 @@ void CircularArcController::configure(const rclcpp_lifecycle::LifecycleNode::Wea
 void CircularArcController::cleanup()
 {
   stop_dist_pub_.reset();
+  turtle_pub_.reset();
 
   state_ = IDLE;
 
@@ -293,6 +317,10 @@ bool CircularArcController::cancel()
   if(state_ == MOVING) 
   { 
     cancelling_ = true;
+  }
+  else if (state_ == IDLE)
+  {
+    return true;
   }
 
   return finished_cancelling_;
@@ -312,8 +340,6 @@ void CircularArcController::reset()
   finished_cancelling_ = false;
   // has_reached_xy_tolerance_ = false;
   //------------------------------
-  collison_detetected_ = false;
-  ir_sensor_detected_ = false;
   reversing_ = false;
   need_init_ = true;
   state_ = IDLE;
@@ -323,12 +349,14 @@ void CircularArcController::activate()
 {
   // No publishers are created in this minimal test implementation.
   stop_dist_pub_->on_activate();
+  turtle_pub_->on_activate();
 }
 
 void CircularArcController::deactivate()
 {
   // No publishers are created in this minimal test implementation.
   stop_dist_pub_->on_deactivate();
+  turtle_pub_->on_deactivate();
 }
 
 void CircularArcController::stopping_distance_publish(const double stopping_distance)

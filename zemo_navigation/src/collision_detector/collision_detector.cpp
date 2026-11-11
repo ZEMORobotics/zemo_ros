@@ -375,18 +375,18 @@ void CollisionDetector::process()
   // Publish polygons for better visualization
   publishPolygons();
 
-  bool difrence_detected = false;
+  bool diffrence_detected = false;
   // ZEMO publish only if collison detected 
   for (std::size_t i = 0; i < state_msg->polygons.size(); i++)
   {
     if(state_msg->detections[i] != (*default_detetions_)[(state_msg->polygons[i])])
     {
-      difrence_detected = true;
+      diffrence_detected = true;
       break;
     }
   }
 
-  if (difrence_detected)
+  if (diffrence_detected)
   {
     for (std::size_t i = 0; i < state_msg->polygons.size(); i++)
     {

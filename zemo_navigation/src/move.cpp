@@ -176,7 +176,6 @@ namespace zemo_navigation
       return false;
     }
     
-
     if (command_->mode & MoveCommand::Goal::MODE_MOVE_TO_GOAL)
     {
       state_ = STATE_ROTATING_TOWARDS_GOAL;

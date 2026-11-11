@@ -81,7 +81,7 @@ def generate_launch_description():
             parameters=[configured_params],
 ),
 
-            #ComposableNode(
+            # ComposableNode(
             #    package="nav2_map_server",
             #    plugin="nav2_map_server::MapServer",
             #    name="map_server",
@@ -92,7 +92,7 @@ def generate_launch_description():
             #            'frame_id': 'map',
             #        }
             #    ],
-            #),
+            # ),
 
             ComposableNode(
                 package="nav2_lifecycle_manager",

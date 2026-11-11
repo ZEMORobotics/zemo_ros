@@ -13,19 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef zemo_navigation__REGULATED_PURE_PURSUIT_CONTROLLEr_HPP_
-#define zemo_navigation__REGULATED_PURE_PURSUIT_CONTROLLEr_HPP_
+#ifndef ZEMO_NAVIGATION_CIRCULAR_ARC_CONTROLLER_CONTROLLER_HPP_
+#define ZEMO_NAVIGATION_CIRCULAR_ARC_CONTROLLER_CONTROLLER_HPP_
 
 #include <string>
-#include <vector>
 #include <memory>
-#include <algorithm>
-#include <mutex>
 #include <cmath>
 
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_msgs/msg/collision_detector_state.hpp"
 #include "nav2_core/controller.hpp"
+#include "nav2_util/node_utils.hpp"
+#include "nav2_core/controller_exceptions.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
@@ -106,6 +105,11 @@ public:
     const geometry_msgs::msg::Twist & velocity,
     nav2_core::GoalChecker * /*goal_checker*/) override;
 
+  /**
+   * @brief Cancel the current control action with the controller
+   * @return True if the controller has finished stopping and the action can be terminated,
+   * false if the robot is still decelerating
+   */
   bool cancel() override;
 
   /**
@@ -123,23 +127,59 @@ public:
    */
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
+  /**
+   * @brief Reset the controller state (cancel flags, sensor detection flags,
+   * movement direction and state machine) so that a new plan can be started
+   */
   void reset() override;
 
 protected:
 
-  // zemo 
+  // zemo source code
+  /**
+   * @brief Callback for the IR sensor topic, updates the IR detection flag
+   * @param msg Int32 message, 1 if an obstacle is detected, 0 otherwise
+   */
   void ir_sensor_callback(const std_msgs::msg::Int32::SharedPtr msg);
+
+  /**
+   * @brief Callback for the collision detector topic, updates the collision detection flag
+   * @param msg Collision detector state containing polygon names and their detection status
+   */
   void collision_detector_callback(const nav2_msgs::msg::CollisionDetectorState::SharedPtr msg);
+
+  /**
+   * @brief Publish the current stopping distance of the robot
+   * @param stopping_distance Stopping distance in meters, negative when moving backwards
+   */
   void stopping_distance_publish(const double stopping_distance);
 
+  /**
+   * @brief Compute the remaining distance along the circular arc to the target pose
+   * @param current_pose Current robot pose
+   * @return Remaining arc length in meters
+   */
   double remaining_distance(const geometry_msgs::msg::PoseStamped current_pose);
+
+  /**
+   * @brief Initialize the movement towards the target pose, computes the arc radius,
+   * arc length, movement direction and sets up the trajectory generator
+   * @param current_pose Current robot pose
+   */
   void init_movement(const geometry_msgs::msg::PoseStamped current_pose);
-  void init_stopping(const double & speed);    // proemni u twist
+
+  /**
+   * @brief Initialize the stopping trajectory from the current speed to zero
+   * @param speed Current linear speed of the robot in m/s
+   */
+  void init_stopping(const double & speed);    // proemni u twist todo zemo
+
+  /**
+   * @brief Compute the velocity command by advancing the trajectory generator one control step using ruckig
+   * @param current_pose Current robot pose
+   * @param cmd_vel Pointer to the velocity command that is filled with linear and angular velocity
+   */
   void regulate_velocity(const geometry_msgs::msg::PoseStamped current_pose, geometry_msgs::msg::TwistStamped *cmd_vel);
-  
-  void shortest_path_direction(const double alpha, double robot_yaw);
-  //void angle_reverse(double* angle);
-  
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
@@ -153,10 +193,10 @@ protected:
   // ---------------------------------------------------------------------------------
   double goal_dist_tol_;
   double control_duration_;
-  bool cancelling_ = false;
-  bool finished_cancelling_ = false;
+  
   bool is_rotating_to_heading_ = false;
-  bool has_reached_xy_tolerance_ = false;  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;
+  bool has_reached_xy_tolerance_ = false;  
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>> carrot_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>> curvature_carrot_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Bool>> is_rotating_to_heading_pub_;
@@ -164,17 +204,20 @@ protected:
   // ---------------------------------------------------------------------------------
 
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float32>> stop_dist_pub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>> turtle_pub_; // delete todo zemo
 
   ruckig::Ruckig<1> *ruckig_{nullptr};
   ruckig::InputParameter<1> ruckig_input_;
   ruckig::OutputParameter<1> ruckig_output_;
 
-  double r_;            
+  double r_; 
+  double inv_r_;                // used only for divison to multiply optimization            
   double update_rate_;
   bool need_init_;
-  double destination_lenght_;          // pocetni put
+  bool cancelling_;
+  bool finished_cancelling_;
   MoveStates state_;
-
+  
   bool reversing_;
   double linear_vel_sign_;
   double angular_vel_sign_;
@@ -184,9 +227,10 @@ protected:
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr ir_sensor_subscription_;
   bool ir_sensor_detected_;
 
+  // params
   double stopping_distance_;
   double stopping_coeff_;
-  double min_lin_vel_tolerance_;                             // param
+  double min_lin_vel_tolerance_;
   double min_ang_vel_tolerance_;
   std::string collison_disatnce_topic_;
 
