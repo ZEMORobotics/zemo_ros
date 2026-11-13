@@ -128,6 +128,8 @@ void StraightLineMove::init_rotation(const geometry_msgs::msg::PoseStamped curre
   const double alpha = std::atan2(dy, dx);
   double robot_yaw = tf2::getYaw(current_pose.pose.orientation);
 
+  // todo zemo da se bira hocemo li reversing i  da li da se okrene na ugao koji on hoce ili jok
+
   reversing_ = shortest_path_direction(alpha, robot_yaw);
   if (reversing_)
   {
@@ -139,7 +141,7 @@ void StraightLineMove::init_rotation(const geometry_msgs::msg::PoseStamped curre
     linear_vel_sign_ = 1.0;
   }
 
-  double rotation_angle1 = (alpha - robot_yaw);
+  // double rotation_angle1 = (alpha - robot_yaw);
   // if (shortest_path_direction(alpha, robot_yaw))
   // {
   //   angle_reverse(&rotation_angle1);
@@ -177,9 +179,9 @@ void StraightLineMove::init_rotation(const geometry_msgs::msg::PoseStamped curre
   }
   
   ruckig_ = new ruckig::Ruckig<1>{1.0 / update_rate_};
-  ruckig_input_.max_velocity = {max_lin_vel_};
-  ruckig_input_.max_acceleration = {max_lin_acc_};
-  ruckig_input_.max_jerk = {max_lin_jerk_};
+  ruckig_input_.max_velocity = {max_ang_vel_};
+  ruckig_input_.max_acceleration = {max_ang_acc_};
+  ruckig_input_.max_jerk = {max_ang_jerk_};
   ruckig_input_.target_position = {rotation_angle};
   ruckig_input_.current_velocity = {0};
   ruckig_input_.current_acceleration = {0};

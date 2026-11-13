@@ -13,7 +13,7 @@ controller_server:
     failure_tolerance: 0.3
     #speed_limit_topic: speed_limit        # published by speed filter
     odom_topic: "odom"
-    controller_plugins: ["FollowPath", "CircularArc", "StraightLine"]
+    controller_plugins: ["FollowPath", "CircularArc", "StraightLine", "Rotation"]
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
     progress_checker:
@@ -42,6 +42,12 @@ controller_server:
       #stopping_distance: 0.2
     StraightLine:
       plugin: "zemo_navigation::StraightLineMove" 
+      collison_disatnce_topic: "/stopping_distance"
+      min_lin_vel_tolerance: 0.05
+      #stopping_distance: 0.2
+      yaw_tolerance: 0.001
+    Rotation:
+      plugin: "zemo_navigation::Rotation" 
       collison_disatnce_topic: "/stopping_distance"
       min_lin_vel_tolerance: 0.05
       #stopping_distance: 0.2

@@ -1,0 +1,7 @@
+<library path="rotation">
+  <class type="zemo_navigation::Rotation" base_class_type="nav2_core::Controller">
+    <description>
+      This is a rotation to target angle controller plugin
+    </description>
+  </class>
+</library>

@@ -226,6 +226,38 @@ pluginlib_export_plugin_description_file(nav2_core straight_line_move_plugin.xml
 
 
 # --------------------------------------------------------------------------
+# controller plugin rotation
+add_library(rotation SHARED src/controller_plugins/rotation.cpp)
+
+target_include_directories(rotation PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(rotation
+  rclcpp
+  geometry_msgs
+  nav2_costmap_2d
+  pluginlib
+  nav_msgs
+  std_msgs
+  angles
+  nav2_util
+  nav2_core
+  tf2
+  tf2_geometry_msgs
+)
+target_link_libraries(rotation ruckig::ruckig)
+
+install(TARGETS rotation
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+pluginlib_export_plugin_description_file(nav2_core rotation_plugin.xml)
+
+# --------------------------------------------------------------------------
 # Install launch files.
 install(DIRECTORY
   launch

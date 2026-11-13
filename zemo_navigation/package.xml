@@ -45,6 +45,7 @@
     <costmap_2d plugin="${prefix}/additional_obstacle_layer.xml" />
     <nav2_core plugin="${prefix}/circular_arc_plugin.xml" />
     <nav2_core plugin="${prefix}/straight_line_move_plugin.xml" />
+    <nav2_core plugin="${prefix}/rotation.xml" />
     <build_type>ament_cmake</build_type>
   </export>
 </package>

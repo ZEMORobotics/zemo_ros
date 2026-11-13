@@ -221,7 +221,10 @@ protected:
   double linear_vel_sign_;
   double angular_vel_sign_;
 
+  // todo zemo lock_tf_base za rotaciju malog ugla ume da zeza
+
   rclcpp::Subscription<nav2_msgs::msg::CollisionDetectorState>::SharedPtr collison_detector_subscription_;
+  std::string collison_disatnce_topic_;
   bool collison_detetected_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr ir_sensor_subscription_;
   bool ir_sensor_detected_;
@@ -232,7 +235,6 @@ protected:
   double min_lin_vel_tolerance_;                             
   double min_ang_vel_tolerance_;
   double yaw_tolerance_;
-  std::string collison_disatnce_topic_;
 
   double max_lin_vel_, max_lin_acc_, max_lin_jerk_;
   double max_ang_vel_, max_ang_acc_, max_ang_jerk_;
